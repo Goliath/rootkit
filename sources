@@ -1,0 +1,7 @@
+TARGETNAME=rootkit
+TARGETPATH=obj
+TARGETTYPE=DRIVER
+
+SOURCES=rootkit.c rk_Hook.c rk_DKOM.c rk_keyboard.c rk_Tools.c
+
+
