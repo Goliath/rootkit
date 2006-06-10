@@ -74,6 +74,12 @@ typedef struct _SRVTABLE {
 #define SYSCALL(_index)  ((PSRVTABLE) KeServiceDescriptorTable)->ServiceTable[ _index ]
 
 //
+// Handy macro for syscal hooking by function address (not index in ssdt)
+//
+
+#define SYSTEMSERVICE(_function)  ((PSRVTABLE)KeServiceDescriptorTable)->ServiceTable[ *(PULONG)((PUCHAR)_function+1)]
+
+//
 // internall use structures 
 //
 typedef struct _MODULE_INFO {
@@ -145,6 +151,13 @@ NTSTATUS HookNtQueryDirectoryFile(
 	IN BOOLEAN bRestartQuery
 );
 
+NTSTATUS 
+HookZwOpenKey(
+	PHANDLE phKey,
+	ACCESS_MASK DesiredAccess,
+	POBJECT_ATTRIBUTES ObjectAttributes
+    );
+
 NTSTATUS HookNtCreateFile(
   PHANDLE FileHandle,
   ACCESS_MASK DesiredAccess,
@@ -206,6 +219,12 @@ typedef NTSTATUS (*NTQUERYDIRECTORYFILE)(
 	IN BOOLEAN bRestartQuery
 );
 
+typedef NTSTATUS (*ZWOPENKEY)( 	
+	IN PHANDLE, 
+	IN OUT ACCESS_MASK, 
+	IN POBJECT_ATTRIBUTES 
+);
+
 // IMPORTS
 
 NTSYSAPI
@@ -233,7 +252,6 @@ NtDeviceIoControlFile(
 	OUT PVOID OutBuffer OPTIONAL,
 	IN ULONG OutBufferLength
 );
-
 
 // STRUCTS
 

