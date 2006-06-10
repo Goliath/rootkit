@@ -95,6 +95,16 @@ KIRQL RaiseIRQLevel();
 ULONG GetProcessNameOffset();
 PMODULE_INFO FindModuleByName( PMODULE_LIST pModuleList, PCHAR moduleName ,ULONG moduleNameSize);
 
+int uwcscat(PWCHAR buf, PUNICODE_STRING str);
+
+NTSYSAPI
+NTSTATUS
+NTAPI ObQueryNameString( PVOID Object, PUNICODE_STRING Name,
+			 ULONG MaximumLength, PULONG ActualLength );
+
+int getFullPath(PWCHAR buf, USHORT bufsize,
+		POBJECT_ATTRIBUTES oa);
+
 ULONG getDirEntryLenToNext( 
 		IN PVOID FileInformationBuffer,
         IN FILE_INFORMATION_CLASS FileInfoClass
