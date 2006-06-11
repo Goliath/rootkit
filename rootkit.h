@@ -14,7 +14,7 @@ typedef struct _MODULE_ENTRY {
 	UNICODE_STRING driver_Name;
 } MODULE_ENTRY, *PMODULE_ENTRY;
 
-PMODULE_ENTRY gul_PsLoadedModuleList;
+PMODULE_ENTRY g_PsLoadedModuleList;
 
 typedef struct
 {
@@ -36,6 +36,12 @@ typedef struct {
 
 NTSTATUS CompleteRequest(PIRP Irp);
 NTSTATUS CompleteKeyboard(IN PIRP Irp);
+
+typedef struct {
+    ULONG   processName;
+    ULONG   processPid;
+    ULONG   activeProcessListOffset;
+} NTOSKRNL_OFFSETS, *PNTOSKRNL_OFFSETS;
 
 typedef struct {
 	ULONG	nameOffset;
