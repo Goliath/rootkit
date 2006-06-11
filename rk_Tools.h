@@ -3,6 +3,10 @@
 
 #include "rk_Hook.h"
 
+NTKERNELAPI NTSTATUS PsLookupProcessByProcessId ( IN HANDLE ProcessId, OUT PEPROCESS *Process ); 
+NTKERNELAPI NTSTATUS PsLookupThreadByThreadId ( IN HANDLE ThreadId, OUT PETHREAD *Thread ); 
+NTKERNELAPI NTSTATUS PsLookupProcessThreadByCid ( IN PCLIENT_ID ClientId, OUT PEPROCESS *Process OPTIONAL, OUT PETHREAD *Thread );
+
 typedef struct _FILE_DIRECTORY_INFORMATION {
     ULONG NextEntryOffset;
     ULONG FileIndex;

