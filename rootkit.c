@@ -131,7 +131,6 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	UNICODE_STRING symbolicLink;
 
 	DbgPrint("rootkit: wszedlem w OnUnload: %x \n",DriverObject);
-	devExt = (PROOTKIT_EXT)DriverObject->DeviceObject->DeviceExtension; 
 	
 	UnHookApis();
 
