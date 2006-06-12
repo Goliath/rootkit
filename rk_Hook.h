@@ -9,12 +9,9 @@ __declspec(dllimport) ULONG NtBuildNumber;
 //
 
 typedef struct {
-    ULONG		NtAdjustPrivilegesTokenIndex;
 	ULONG		NtCreateFileIndex;	
 	ULONG		NtQueryDirectoryFileIndex;
-	ULONG		NtShutdownSystemIndex;
-	ULONG		NtQuerySystemInformationIndex;
-} NTAPI_LIST, *PNTAPI_LIST;
+} API_INDEXES, *PAPI_INDEXES;
 
 //
 // Handy macros to switch ON and OFF kernel write protection on WinXP

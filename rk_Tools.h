@@ -98,7 +98,6 @@ VOID LowerIRQLevel( KIRQL oldIrql );
 KIRQL RaiseIRQLevel();
 ULONG GetProcessNameOffset();
 PMODULE_INFO FindModuleByName( PMODULE_LIST pModuleList, PCHAR moduleName ,ULONG moduleNameSize);
-
 int uwcscat(PWCHAR buf, PUNICODE_STRING str);
 
 NTSYSAPI
