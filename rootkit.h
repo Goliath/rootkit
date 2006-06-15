@@ -1,8 +1,8 @@
 #ifndef _ROOTKIT_H_
 #define _ROOTKIT_H_
 
-#define		ROOTKIT_WIN32_DEV_NAME		L"\\DosDevices\\myRootkitDrv"
-#define		ROOTKIT_DEV_NAME			L"\\Device\\myRootkitDrv"
+#define		ROOTKIT_WIN32_DEV_NAME		L"\\DosDevices\\rootkitDrv"
+#define		ROOTKIT_DEV_NAME			L"\\Device\\rootkitDrv"
 
 typedef struct _MODULE_ENTRY {
 	LIST_ENTRY le_mod;

