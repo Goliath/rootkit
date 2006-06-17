@@ -2,6 +2,6 @@ TARGETNAME=rootkit
 TARGETPATH=obj
 TARGETTYPE=DRIVER
 
-SOURCES=rootkit.c rk_Hook.c rk_DKOM.c rk_Tools.c
+SOURCES=rootkit.c rk_Hook.c rk_DKOM.c rk_Tools.c rk_Tcpip.c
 
 

