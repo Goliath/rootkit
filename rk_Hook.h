@@ -5,6 +5,8 @@
 // TYPY
 //---------------------------------------------------------------------------------
 
+#includ <ntddk.h>
+
 typedef     NTSTATUS    (NTAPI *NTPROC) ();
 
 typedef     NTPROC      *PNTPROC;
